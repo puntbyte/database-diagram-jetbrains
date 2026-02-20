@@ -1,6 +1,5 @@
 // web/src/components/connection/anchor.ts
 
-
 import type {Point} from './types';
 
 export class AnchorComponent {

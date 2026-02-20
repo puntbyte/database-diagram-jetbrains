@@ -1,3 +1,5 @@
+// web/src/models/type.ts
+
 export interface IndexDef {
   columns: string[];
   settings?: Record<string,string>;

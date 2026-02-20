@@ -54,18 +54,12 @@ class SchemaPreviewFileEditor(
   // --- Synchronization Logic ---
 
   override fun onTablePositionUpdated(tableName: String, x: Int, y: Int, width: Int?) {
-    // 1. Obtain Document safely
     val document = ApplicationManager.getApplication().runReadAction<Document?> {
       FileDocumentManager.getInstance().getDocument(file)
     } ?: return
 
-    // 2. Check Writable safely
-    val isWritable = ApplicationManager.getApplication().runReadAction<Boolean> {
-      document.isWritable
-    }
-    if (!isWritable) return
+    if (!ApplicationManager.getApplication().runReadAction<Boolean> { document.isWritable }) return
 
-    // 3. Write Action
     WriteCommandAction.runWriteCommandAction(project) {
       try {
         updateTableSettings(document, tableName, x, y, width)
@@ -84,19 +78,12 @@ class SchemaPreviewFileEditor(
   ) {
     val text = document.text
 
-    // 1. Construct a Regex that matches: schema.table, "schema"."table", "table", etc.
-    // We split the incoming name (likely "schema.table") and allow quotes around each part.
+    // Regex matches schema.table, "schema"."table", etc.
     val parts = tableName.split(".")
     val escapedNameRegexPart = parts.joinToString(separator = "\\s*\\.\\s*") { part ->
       "\"?\\Q$part\\E\"?"
     }
 
-    // Regex Explanation:
-    // Table\s+                  -> 'Table' keyword
-    // ($escapedNameRegexPart)   -> Group 1: The table name (flexible quoting)
-    // \s*(?:as\s+\w+\s*)?       -> Optional Alias (ignored)
-    // (?:\[([\s\S]*?)])?        -> Group 2: Optional Settings block [ ... ]
-    // \s*\{                     -> Start of body
     val tableRegex = Regex(
       """Table\s+($escapedNameRegexPart)\s*(?:as\s+\w+\s*)?(?:\[([\s\S]*?)])?\s*\{""",
       RegexOption.IGNORE_CASE
@@ -107,20 +94,16 @@ class SchemaPreviewFileEditor(
     val settingsBlock = match.groups[2]
     val hasSettings = settingsBlock != null
 
-    // Helper to update or append a key inside a string
     fun updateSettingString(source: String): String {
       var newSettings = source
 
       fun replaceOrAppend(key: String, value: Any) {
-        // FIX: Regex matches optional minus sign '[-]' for negative coordinates
-        // Matches: "key : 123", "key: -50", "key: 10.5"
+        // Matches "key: 123", "key: -50"
         val keyRegex = Regex("""(\b$key\s*:\s*)([-\d.]+)""", RegexOption.IGNORE_CASE)
 
         newSettings = if (keyRegex.containsMatchIn(newSettings)) {
-          // Replace existing value
           newSettings.replace(keyRegex, "$1$value")
         } else {
-          // Append new value
           val trimmed = newSettings.trimEnd()
           val separator = if (trimmed.isNotEmpty() && !trimmed.endsWith(",")) ", " else ""
           val prefix = if (trimmed.isEmpty()) "" else separator
@@ -137,17 +120,12 @@ class SchemaPreviewFileEditor(
     }
 
     if (hasSettings) {
-      // Update existing [ ... ] block
       val currentContent = settingsBlock!!.value
       val newContent = updateSettingString(currentContent)
       val range = settingsBlock.range
       document.replaceString(range.first, range.last + 1, newContent)
     } else {
-      // Create new [ ... ] block
-      // Insert it before the opening brace '{'
-      // We find the insertion point after the name/alias match
       val insertIndex = match.groups[1]!!.range.last + 1
-      // Use indexOf to safely find the next '{'
       val braceIndex = text.indexOf('{', insertIndex)
       if (braceIndex != -1) {
         val newBlock = " [${updateSettingString("")}] "
@@ -183,14 +161,12 @@ class SchemaPreviewFileEditor(
     val projectRegex = Regex("""Project(?:\s+("?[^"{]*"?))?\s*\{([\s\S]*?)}""", RegexOption.IGNORE_CASE)
     val match = projectRegex.find(text)
 
-    // Helper: Quote strings, leave numbers/booleans/nulls alone
     fun formatValue(v: String): String {
       return if (v.matches(Regex("^-?[\\d.]+$")) || v == "true" || v == "false") v
       else "'${v.replace("'", "\\'")}'"
     }
 
     if (match != null) {
-      // Update existing Project block
       val bodyRange = match.groups[2]!!.range
       val body = match.groupValues[2]
       var newBody = body
@@ -199,14 +175,12 @@ class SchemaPreviewFileEditor(
         if (value == null) continue
         val formattedVal = formatValue(value)
 
-        // Regex to find existing key: value
-        // Captures prefix ($1) and replaces value
+        // Matches "key: value"
         val keyRegex = Regex("""(\b$key\s*:\s*)(.*)""")
 
         newBody = if (keyRegex.containsMatchIn(newBody)) {
           newBody.replace(keyRegex, "$1$formattedVal")
         } else {
-          // Append new key
           val prefix = if (newBody.trim().isEmpty()) "\n  " else "\n  "
           "$newBody$prefix$key: $formattedVal"
         }
@@ -214,7 +188,6 @@ class SchemaPreviewFileEditor(
       document.replaceString(bodyRange.first, bodyRange.last + 1, newBody)
 
     } else {
-      // Create new Project block at top of file
       val sb = StringBuilder()
       val name = defaultProjectName?.let { " \"$it\"" } ?: ""
       sb.append("Project$name {\n")

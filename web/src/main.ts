@@ -1,3 +1,5 @@
+// web/src/main.ts
+
 import { Bridge, type ServerMessage } from "./core/bridge";
 import { SchemaRenderer } from "./core/renderer";
 import "./styles/main.css";
@@ -16,7 +18,7 @@ const bridge = new Bridge((msg: ServerMessage) => {
 
 // 2. Initialize Renderer
 // - Callback 1: On Table Move/Resize -> Update Table Settings
-// - Callback 2: On Pan/Zoom -> Update Project Settings
+// - (Callback 2 for Pan/Zoom tracking is removed to stop saving those settings)
 const renderer = new SchemaRenderer(
   "app",
   (tableName, x, y, width) => {
@@ -27,39 +29,21 @@ const renderer = new SchemaRenderer(
       y: y,
       width: width
     });
-  },
-  (scale, x, y) => {
-    // Debounce this in production if needed, but for now send directly
-    bridge.send({
-      type: "UPDATE_PROJECT_SETTINGS",
-      settings: {
-        zoom: scale,
-        panX: Math.round(x),
-        panY: Math.round(y)
-      }
-    });
   }
 );
 
 // 3. Listen for HUD Events (Grid Toggle, Line Style)
-// These events bubble up from the HUD component
 const app = document.getElementById('app')!;
 app.addEventListener('project-settings-changed', (e: any) => {
   const partial = e.detail || {};
 
-  // We need to include the current transform so we don't lose position
-  // when toggling the grid or changing line style.
-  // Accessing private manager via 'any' cast or public getter if available.
-  const t = renderer['panZoomManager']?.getTransform?.() || { scale: 1, x: 0, y: 0 };
-
+  // Only send Grid and Line Style settings.
+  // Zoom and Pan are no longer sent to the backend.
   bridge.send({
     type: "UPDATE_PROJECT_SETTINGS",
     settings: {
       lineStyle: partial.lineStyle, // string
-      showGrid: partial.showGrid,   // boolean
-      zoom: partial.zoom ?? t.scale,
-      panX: partial.panX ?? Math.round(t.x),
-      panY: partial.panY ?? Math.round(t.y)
+      showGrid: partial.showGrid    // boolean
     }
   });
 });
