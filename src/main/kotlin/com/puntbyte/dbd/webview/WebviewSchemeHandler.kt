@@ -11,74 +11,84 @@ import java.io.InputStream
 import java.net.URI
 
 class WebviewSchemeHandler : CefResourceHandler {
-    private val logger = thisLogger()
-    private var inputStream: InputStream? = null
-    private var mimeType: String = "text/html"
+  private val logger = thisLogger()
+  private var inputStream: InputStream? = null
+  private var mimeType: String = "text/html"
 
-    override fun processRequest(request: CefRequest, callback: CefCallback): Boolean {
-        // 1. Log what the browser is asking for
-        logger.info("WebView Requesting: ${request.url}")
+  override fun processRequest(request: CefRequest, callback: CefCallback): Boolean {
+    // 1. Log what the browser is asking for
+    logger.info("WebView Requesting: ${request.url}")
 
-        val path = URI(request.url).path
-        // Handle root path
-        val actualPath = if (path == "/" || path.isEmpty()) "/index.html" else path
+    val path = URI(request.url).path
+    // Handle root path
+    val actualPath = if (path == "/" || path.isEmpty()) "/index.html" else path
 
-        // 2. Map to your resources folder structure
-        // IMPORTANT: Ensure your files are in src/main/resources/webview/
-        val resourcePath = "/webview$actualPath"
+    // 2. Map to your resources folder structure
+    // IMPORTANT: Ensure your files are in src/main/resources/webview/
+    val resourcePath = "/webview$actualPath"
 
-        mimeType = when {
-            actualPath.endsWith(".html") -> "text/html"
-            actualPath.endsWith(".js") -> "application/javascript"
-            actualPath.endsWith(".css") -> "text/css"
-            else -> "text/plain"
-        }
-
-        // 3. Try to load
-        inputStream = javaClass.getResourceAsStream(resourcePath)
-
-        if (inputStream != null) {
-            logger.info("Found resource: $resourcePath")
-            callback.Continue()
-            return true
-        } else {
-            logger.warn("Resource NOT FOUND: $resourcePath")
-            return false
-        }
+    mimeType = when {
+      actualPath.endsWith(".html") -> "text/html"
+      actualPath.endsWith(".js") -> "application/javascript"
+      actualPath.endsWith(".css") -> "text/css"
+      else -> "text/plain"
     }
 
-    override fun getResponseHeaders(response: CefResponse, responseLength: IntRef, redirectUrl: StringRef?) {
-        if (inputStream == null) {
-            response.status = 404
-        } else {
-            response.status = 200
-            response.mimeType = mimeType
-            try {
-                val available = inputStream?.available() ?: 0
-                if (available > 0) responseLength.set(available)
-            } catch (_: Exception) {}
-        }
-    }
+    // 3. Try to load
+    inputStream = javaClass.getResourceAsStream(resourcePath)
 
-    override fun readResponse(dataOut: ByteArray, bytesToRead: Int, bytesRead: IntRef, callback: CefCallback): Boolean {
-        val stream = inputStream ?: return false
-        return try {
-            val count = stream.read(dataOut, 0, bytesToRead)
-            if (count > 0) {
-                bytesRead.set(count)
-                true
-            } else {
-                bytesRead.set(0)
-                stream.close()
-                false
-            }
-        } catch (e: Exception) {
-            bytesRead.set(0)
-            false
-        }
+    if (inputStream != null) {
+      logger.info("Found resource: $resourcePath")
+      callback.Continue()
+      return true
+    } else {
+      logger.warn("Resource NOT FOUND: $resourcePath")
+      return false
     }
+  }
 
-    override fun cancel() {
-        inputStream?.close()
+  override fun getResponseHeaders(
+    response: CefResponse,
+    responseLength: IntRef,
+    redirectUrl: StringRef?
+  ) {
+    if (inputStream == null) {
+      response.status = 404
+    } else {
+      response.status = 200
+      response.mimeType = mimeType
+      try {
+        val available = inputStream?.available() ?: 0
+        if (available > 0) responseLength.set(available)
+      } catch (_: Exception) {
+      }
     }
+  }
+
+  override fun readResponse(
+    dataOut: ByteArray,
+    bytesToRead: Int,
+    bytesRead: IntRef,
+    callback: CefCallback
+  ): Boolean {
+    val stream = inputStream ?: return false
+    return try {
+      val count = stream.read(dataOut, 0, bytesToRead)
+      if (count > 0) {
+        bytesRead.set(count)
+        true
+      } else {
+        bytesRead.set(0)
+        stream.close()
+        false
+      }
+    } catch (e: Exception) {
+      bytesRead.set(0)
+      false
+    }
+  }
+
+  override fun cancel() {
+    inputStream?.close()
+  }
 }

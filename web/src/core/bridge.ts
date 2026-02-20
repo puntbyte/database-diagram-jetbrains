@@ -7,8 +7,11 @@ export type ServerMessage =
 export type ClientMessage =
     | { type: "LOG"; level: string; message: string }
     | { type: "READY" }
-    // FIX: Add width parameter here
-    | { type: "UPDATE_TABLE_POS"; tableName: string; x: number; y: number; width?: number };
+    | { type: "UPDATE_TABLE_POS"; tableName: string; x: number; y: number; width?: number }
+    | {
+  type: "UPDATE_PROJECT_SETTINGS";
+  settings: { lineStyle?: string; showGrid?: boolean; zoom?: number; panX?: number; panY?: number }
+};
 
 declare global {
   interface Window {

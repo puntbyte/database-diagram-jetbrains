@@ -113,9 +113,12 @@ export class DragManager {
 
     const table = this.activeEl;
 
-    // Find name
+    // Prefer the full name stored on the table element (data-table-name).
+    // Fallback to visible title or generated id if dataset isn't present.
     const titleEl = table.querySelector('.title');
-    const tableName = titleEl ? titleEl.textContent : table.id.replace('table-', '');
+    const tableName =
+        (table.dataset && table.dataset.tableName) ||
+        (titleEl ? titleEl.textContent || '' : table.id.replace('table-', ''));
 
     if (tableName) {
       const x = Math.round(parseInt(table.style.left || '0', 10));

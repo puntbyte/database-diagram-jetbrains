@@ -1,5 +1,4 @@
 // web/src/components/table.ts
-
 import type {DbTable} from '../models/types';
 import {ColumnComponent} from './column';
 import {Icons} from './icons';
@@ -9,6 +8,10 @@ export class TableComponent {
     const el = document.createElement('div');
     el.className = 'db-table';
     el.id = `table-${table.id}`;
+
+    // <-- Expose the full (original) table name on the DOM so the drag code can
+    // send the exact name back to the IDE when updating the DBML source.
+    el.dataset.tableName = table.name;
 
     if (table.width) {
       el.style.width = `${table.width}px`;

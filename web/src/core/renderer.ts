@@ -1,7 +1,7 @@
-// web/src/core/renderer.ts
+// web/src/core/render.ts
 
 import type {Parser} from './parser-interface';
-import {DbmlParser} from './parsers/dbml-parser';
+import { DbmlParser } from '../parsers/dbml/'; // Updated Import
 import {TableComponent} from '../components/table';
 import {ConnectionManager} from '../components/connection/manager';
 import {DragManager, type OnTableUpdateCallback} from '../interactions/drag-manager';
@@ -14,13 +14,13 @@ export class SchemaRenderer {
   private connectionManager: ConnectionManager;
   private dragManager: DragManager;
   private panZoomManager: PanZoomManager;
-  private hud: HUDComponent; // <-- Add HUD property
+  private hud: HUDComponent;
 
   private parsers: Record<string, Parser> = {
     'dbml': new DbmlParser(),
   };
 
-  constructor(containerId: string, onTableMove: OnTableUpdateCallback) {
+  constructor(containerId: string, onTableMove: OnTableUpdateCallback, onTransform?: (scale:number,x:number,y:number) => void) {
     this.container = document.getElementById(containerId)!;
 
     this.wrapper = document.createElement('div');
@@ -33,36 +33,64 @@ export class SchemaRenderer {
     this.panZoomManager = new PanZoomManager(this.wrapper, (scale) => {
       this.dragManager.updateScale(scale);
       this.connectionManager.updateScale(scale);
+    }, (scale, x, y) => {
+      this.dragManager.updateScale(scale);
+      this.connectionManager.updateScale(scale);
+      if (onTransform) onTransform(scale, x, y);
     });
 
-    // Initialize the HUD, append to container (not wrapper, so it stays fixed to screen)
     this.hud = new HUDComponent(this.container, this.panZoomManager, this.connectionManager);
   }
 
   public render(format: string, content: string) {
     this.wrapper.innerHTML = '';
 
-    // recreate the connection manager layer so it sits above the wrapper contents
+    // Reset connection manager layer
     this.connectionManager = new ConnectionManager(this.wrapper);
     this.dragManager.updateConnectionManager(this.connectionManager);
     this.connectionManager.updateScale(this.panZoomManager.getScale());
 
-    // Re-create HUD so it references the new connection manager (remove old first)
+    // Reset HUD
     this.container.querySelector('.schema-hud')?.remove();
     this.hud = new HUDComponent(this.container, this.panZoomManager, this.connectionManager);
 
     if (!content.trim()) return;
 
     try {
-      // Normalize format key (accept ".dbml", " DBML ", etc.)
       let fmtKey = (format || '').toLowerCase().trim();
       if (fmtKey.startsWith('.')) fmtKey = fmtKey.slice(1);
 
       const parser = this.parsers[fmtKey];
       if (!parser) throw new Error(`Unsupported format: ${format}`);
 
-      const { tables, relationships } = parser.parse(content);
+      // Parse content including Project settings
+      const { tables, relationships, projectSettings } = parser.parse(content);
 
+      // --- APPLY PROJECT SETTINGS ---
+      if (projectSettings) {
+        // 1. Restore Zoom/Pan
+        if (projectSettings.zoom !== undefined || projectSettings.panX !== undefined) {
+          const s = projectSettings.zoom || 1;
+          const x = projectSettings.panX || 0;
+          const y = projectSettings.panY || 0;
+          this.panZoomManager.setTransform(s, x, y);
+        }
+
+        // 2. Restore Grid
+        // Note: DBML parser returns "true" string or boolean depending on how we parsed it.
+        const showGrid = projectSettings.showGrid === 'true' || projectSettings.showGrid === true;
+        if (showGrid) {
+          this.wrapper.classList.add('grid-visible');
+          // Update HUD button state visually if needed (requires HUD access or separate event)
+        }
+
+        // 3. Restore Line Style
+        if (projectSettings.lineStyle) {
+          this.connectionManager.setLineStyle(projectSettings.lineStyle as any);
+        }
+      }
+
+      // Render Tables
       const gapX = 350;
       const gapY = 300;
       const cols = 3;
@@ -87,7 +115,6 @@ export class SchemaRenderer {
 
       this.dragManager.setRelationships(relationships);
 
-      // ensure DOM is painted before measuring/drawing connections
       setTimeout(() => {
         this.connectionManager.draw(relationships);
       }, 0);

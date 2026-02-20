@@ -1,21 +1,23 @@
 // web/src/components/hud.ts
 
-import type {LineStyle} from '../models/types';
 import type {PanZoomManager} from '../interactions/panzoom-manager';
 import type {ConnectionManager} from './connection/manager';
+import type {LineStyle} from "./connection/types.ts";
 
 export class HUDComponent {
   private el: HTMLElement;
+  private container: HTMLElement;
 
   constructor(
       container: HTMLElement,
       panZoom: PanZoomManager,
       connectionManager: ConnectionManager
   ) {
+    this.container = container;
     this.el = document.createElement('div');
     this.el.className = 'schema-hud';
 
-    // 1. Zoom Controls
+    // 1. Zoom Controls (group)
     const zoomGroup = document.createElement('div');
     zoomGroup.className = 'hud-group';
 
@@ -30,7 +32,7 @@ export class HUDComponent {
 
     zoomGroup.append(btnIn, btnOut, btnFit);
 
-    // 2. Line Style Dropdown
+    // 2. Line Style Dropdown (group)
     const styleGroup = document.createElement('div');
     styleGroup.className = 'hud-group';
 
@@ -56,12 +58,38 @@ export class HUDComponent {
     select.onchange = (e) => {
       const val = (e.target as HTMLSelectElement).value as LineStyle;
       connectionManager.setLineStyle(val);
+
+      // notify host that a project setting changed
+      this.dispatchProjectSettingsChange({ lineStyle: val });
     };
 
     styleGroup.appendChild(select);
 
-    // Add to HUD
-    this.el.append(zoomGroup, styleGroup);
+    // 3. Grid toggle button (group)
+    const gridGroup = document.createElement('div');
+    gridGroup.className = 'hud-group';
+
+    const gridBtn = this.createButton('▓', 'Toggle Grid');
+    gridBtn.title = 'Toggle grid';
+    // store state on the button
+    gridBtn.dataset.state = 'off';
+    gridBtn.onclick = () => {
+      const state = gridBtn.dataset.state === 'on';
+      const newState = !state;
+      gridBtn.dataset.state = newState ? 'on' : 'off';
+      // toggle CSS class on wrapper
+      if (newState) this.container.querySelector('.schema-wrapper')?.classList.add('grid-visible');
+      else this.container.querySelector('.schema-wrapper')?.classList.remove('grid-visible');
+
+      // notify host of change
+      this.dispatchProjectSettingsChange({ showGrid: newState });
+    };
+
+    gridGroup.appendChild(gridBtn);
+
+    // Compose HUD groups. Because we use column-reverse the "first" group ends up
+    // visually at the bottom and additional groups grow upwards.
+    this.el.append(gridGroup, styleGroup, zoomGroup);
     container.appendChild(this.el);
   }
 
@@ -71,5 +99,10 @@ export class HUDComponent {
     btn.innerText = text;
     btn.title = title;
     return btn;
+  }
+
+  private dispatchProjectSettingsChange(partial: Partial<{ lineStyle: LineStyle; showGrid: boolean; zoom: number; panX: number; panY: number }>) {
+    const ev = new CustomEvent('project-settings-changed', { detail: partial });
+    this.container.dispatchEvent(ev);
   }
 }

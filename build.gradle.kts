@@ -24,6 +24,9 @@ dependencies {
 
         // Add plugin dependencies for compilation here, example:
         // bundledPlugin("com.intellij.java")
+
+        // Add jackson-kotlin module used by jacksonObjectMapper()
+        implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.15.2")
     }
 }
 

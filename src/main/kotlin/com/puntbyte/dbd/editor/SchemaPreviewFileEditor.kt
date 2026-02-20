@@ -16,117 +16,224 @@ import java.beans.PropertyChangeListener
 import javax.swing.JComponent
 
 class SchemaPreviewFileEditor(
-    private val project: Project,
-    private val file: VirtualFile
+  private val project: Project,
+  private val file: VirtualFile
 ) : UserDataHolderBase(), FileEditor, WebviewPanel.WebviewListener {
 
-    private val webviewPanel = WebviewPanel(this, file, this)
-    private var isDisposed = false
+  private val webviewPanel = WebviewPanel(this, file, this)
+  private var isDisposed = false
 
-    init {
-        val connection = ApplicationManager.getApplication().messageBus.connect(this)
-        connection.subscribe(LafManagerListener.TOPIC, LafManagerListener {
-            updateTheme()
-        })
+  init {
+    val connection = ApplicationManager.getApplication().messageBus.connect(this)
+    connection.subscribe(LafManagerListener.TOPIC, LafManagerListener {
+      updateTheme()
+    })
+  }
+
+  override fun getComponent(): JComponent = webviewPanel.component
+  override fun getPreferredFocusedComponent(): JComponent = webviewPanel.component
+  override fun getName(): String = "DBML Preview"
+
+  fun render(content: String) {
+    if (isDisposed) return
+    val format = file.extension ?: "dbml"
+    webviewPanel.updateSchema(format, content)
+  }
+
+  private fun updateTheme() {
+    if (isDisposed) return
+    val isDark = !JBColor.isBright()
+    val themeStr = if (isDark) "dark" else "light"
+    webviewPanel.updateTheme(themeStr)
+  }
+
+  override fun onWebviewReady() {
+    updateTheme()
+  }
+
+  // --- Synchronization Logic ---
+
+  override fun onTablePositionUpdated(tableName: String, x: Int, y: Int, width: Int?) {
+    // 1. Obtain Document safely
+    val document = ApplicationManager.getApplication().runReadAction<Document?> {
+      FileDocumentManager.getInstance().getDocument(file)
+    } ?: return
+
+    // 2. Check Writable safely
+    val isWritable = ApplicationManager.getApplication().runReadAction<Boolean> {
+      document.isWritable
+    }
+    if (!isWritable) return
+
+    // 3. Write Action
+    WriteCommandAction.runWriteCommandAction(project) {
+      try {
+        updateTableSettings(document, tableName, x, y, width)
+      } catch (e: Exception) {
+        e.printStackTrace()
+      }
+    }
+  }
+
+  private fun updateTableSettings(
+    document: Document,
+    tableName: String,
+    x: Int,
+    y: Int,
+    width: Int?
+  ) {
+    val text = document.text
+
+    // 1. Construct a Regex that matches: schema.table, "schema"."table", "table", etc.
+    // We split the incoming name (likely "schema.table") and allow quotes around each part.
+    val parts = tableName.split(".")
+    val escapedNameRegexPart = parts.joinToString(separator = "\\s*\\.\\s*") { part ->
+      "\"?\\Q$part\\E\"?"
     }
 
-    override fun getComponent(): JComponent = webviewPanel.component
-    override fun getPreferredFocusedComponent(): JComponent = webviewPanel.component
-    override fun getName(): String = "DBML Preview"
+    // Regex Explanation:
+    // Table\s+                  -> 'Table' keyword
+    // ($escapedNameRegexPart)   -> Group 1: The table name (flexible quoting)
+    // \s*(?:as\s+\w+\s*)?       -> Optional Alias (ignored)
+    // (?:\[([\s\S]*?)])?        -> Group 2: Optional Settings block [ ... ]
+    // \s*\{                     -> Start of body
+    val tableRegex = Regex(
+      """Table\s+($escapedNameRegexPart)\s*(?:as\s+\w+\s*)?(?:\[([\s\S]*?)])?\s*\{""",
+      RegexOption.IGNORE_CASE
+    )
 
-    fun render(content: String) {
-        if (isDisposed) return
-        val format = file.extension ?: "dbml"
-        webviewPanel.updateSchema(format, content)
-    }
+    val match = tableRegex.find(text) ?: return
 
-    private fun updateTheme() {
-        if (isDisposed) return
-        val isDark = !JBColor.isBright()
-        val themeStr = if (isDark) "dark" else "light"
-        webviewPanel.updateTheme(themeStr)
-    }
+    val settingsBlock = match.groups[2]
+    val hasSettings = settingsBlock != null
 
-    override fun onWebviewReady() {
-        updateTheme()
-    }
+    // Helper to update or append a key inside a string
+    fun updateSettingString(source: String): String {
+      var newSettings = source
 
-    // --- Synchronization Logic ---
+      fun replaceOrAppend(key: String, value: Any) {
+        // FIX: Regex matches optional minus sign '[-]' for negative coordinates
+        // Matches: "key : 123", "key: -50", "key: 10.5"
+        val keyRegex = Regex("""(\b$key\s*:\s*)([-\d.]+)""", RegexOption.IGNORE_CASE)
 
-    override fun onTablePositionUpdated(tableName: String, x: Int, y: Int, width: Int?) {
-        // Ensure we are working on a valid, writable document
-        val document = FileDocumentManager.getInstance().getDocument(file) ?: return
-        if (!document.isWritable) return
-
-        WriteCommandAction.runWriteCommandAction(project) {
-            try {
-                updateTableSettings(document, tableName, x, y, width)
-            } catch (e: Exception) {
-                // Log but don't crash the editor
-                e.printStackTrace()
-            }
-        }
-    }
-
-    private fun updateTableSettings(document: Document, tableName: String, x: Int, y: Int, width: Int?) {
-        val text = document.text
-        val escapedName = Regex.escape(tableName)
-
-        // 1. Regex to find the table block.
-        // [\s\S]*? matches newlines inside the [...] block, fixing the "no update" issue.
-        val tableRegex = Regex("""Table\s+("?$escapedName"?)\s*(?:\[([\s\S]*?)]\s*)?\{""", RegexOption.IGNORE_CASE)
-        val match = tableRegex.find(text) ?: return
-
-        val hasSettings = match.groups[2] != null
-        val existingSettings = match.groupValues[2]
-
-        // 2. Helper to replace a value specifically, or return null if key missing
-        fun replaceValue(source: String, key: String, newValue: Int): String {
-            val keyRegex = Regex("""(\b$key\s*:\s*)(\d+)""", RegexOption.IGNORE_CASE)
-            return if (keyRegex.containsMatchIn(source)) {
-                source.replace(keyRegex, "$1$newValue")
-            } else {
-                // Append if not found
-                val prefix = if (source.isBlank()) "" else ", "
-                "$source$prefix$key: $newValue"
-            }
-        }
-
-        if (hasSettings) {
-            // --- Modify Existing Settings Block ---
-            var newSettings = existingSettings
-            newSettings = replaceValue(newSettings, "x", x)
-            newSettings = replaceValue(newSettings, "y", y)
-
-            if (width != null && width > 0) {
-                newSettings = replaceValue(newSettings, "width", width)
-            }
-
-            // Replace only the settings content range
-            val range = match.groups[2]!!.range
-            document.replaceString(range.first, range.last + 1, newSettings)
-
+        newSettings = if (keyRegex.containsMatchIn(newSettings)) {
+          // Replace existing value
+          newSettings.replace(keyRegex, "$1$value")
         } else {
-            // --- Create New Settings Block ---
-            var newBlock = "x: $x, y: $y"
-            if (width != null && width > 0) {
-                newBlock += ", width: $width"
-            }
-
-            // Insert before the '{'
-            // We use range.last which points to '{' (or whitespace before it depending on capture)
-            // Safest way: Find the last '{' in the match range
-            val openBraceIndex = text.lastIndexOf('{', match.range.last)
-            if (openBraceIndex != -1) {
-                document.insertString(openBraceIndex, " [$newBlock] ")
-            }
+          // Append new value
+          val trimmed = newSettings.trimEnd()
+          val separator = if (trimmed.isNotEmpty() && !trimmed.endsWith(",")) ", " else ""
+          val prefix = if (trimmed.isEmpty()) "" else separator
+          "$trimmed$prefix$key: $value"
         }
+      }
+
+      replaceOrAppend("x", x)
+      replaceOrAppend("y", y)
+      if (width != null && width > 0) {
+        replaceOrAppend("width", width)
+      }
+      return newSettings
     }
 
-    override fun setState(state: FileEditorState) {}
-    override fun isModified(): Boolean = false
-    override fun isValid(): Boolean = true
-    override fun addPropertyChangeListener(listener: PropertyChangeListener) {}
-    override fun removePropertyChangeListener(listener: PropertyChangeListener) {}
-    override fun dispose() { isDisposed = true }
+    if (hasSettings) {
+      // Update existing [ ... ] block
+      val currentContent = settingsBlock!!.value
+      val newContent = updateSettingString(currentContent)
+      val range = settingsBlock.range
+      document.replaceString(range.first, range.last + 1, newContent)
+    } else {
+      // Create new [ ... ] block
+      // Insert it before the opening brace '{'
+      // We find the insertion point after the name/alias match
+      val insertIndex = match.groups[1]!!.range.last + 1
+      // Use indexOf to safely find the next '{'
+      val braceIndex = text.indexOf('{', insertIndex)
+      if (braceIndex != -1) {
+        val newBlock = " [${updateSettingString("")}] "
+        document.insertString(braceIndex, newBlock)
+      }
+    }
+  }
+
+  override fun onProjectSettingsUpdated(settings: Map<String, String?>) {
+    val document = ApplicationManager.getApplication().runReadAction<Document?> {
+      FileDocumentManager.getInstance().getDocument(file)
+    } ?: return
+
+    if (!ApplicationManager.getApplication().runReadAction<Boolean> { document.isWritable }) return
+
+    WriteCommandAction.runWriteCommandAction(project) {
+      try {
+        updateProjectBlock(document, settings, file.nameWithoutExtension)
+      } catch (e: Exception) {
+        e.printStackTrace()
+      }
+    }
+  }
+
+  private fun updateProjectBlock(
+    document: Document,
+    settings: Map<String, String?>,
+    defaultProjectName: String?
+  ) {
+    val text = document.text
+
+    // Regex: Project [optional_name] { ... }
+    val projectRegex = Regex("""Project(?:\s+("?[^"{]*"?))?\s*\{([\s\S]*?)}""", RegexOption.IGNORE_CASE)
+    val match = projectRegex.find(text)
+
+    // Helper: Quote strings, leave numbers/booleans/nulls alone
+    fun formatValue(v: String): String {
+      return if (v.matches(Regex("^-?[\\d.]+$")) || v == "true" || v == "false") v
+      else "'${v.replace("'", "\\'")}'"
+    }
+
+    if (match != null) {
+      // Update existing Project block
+      val bodyRange = match.groups[2]!!.range
+      val body = match.groupValues[2]
+      var newBody = body
+
+      for ((key, value) in settings) {
+        if (value == null) continue
+        val formattedVal = formatValue(value)
+
+        // Regex to find existing key: value
+        // Captures prefix ($1) and replaces value
+        val keyRegex = Regex("""(\b$key\s*:\s*)(.*)""")
+
+        newBody = if (keyRegex.containsMatchIn(newBody)) {
+          newBody.replace(keyRegex, "$1$formattedVal")
+        } else {
+          // Append new key
+          val prefix = if (newBody.trim().isEmpty()) "\n  " else "\n  "
+          "$newBody$prefix$key: $formattedVal"
+        }
+      }
+      document.replaceString(bodyRange.first, bodyRange.last + 1, newBody)
+
+    } else {
+      // Create new Project block at top of file
+      val sb = StringBuilder()
+      val name = defaultProjectName?.let { " \"$it\"" } ?: ""
+      sb.append("Project$name {\n")
+      for ((key, value) in settings) {
+        if (value != null) {
+          sb.append("  $key: ${formatValue(value)}\n")
+        }
+      }
+      sb.append("}\n\n")
+      document.insertString(0, sb.toString())
+    }
+  }
+
+  override fun setState(state: FileEditorState) {}
+  override fun isModified(): Boolean = false
+  override fun isValid(): Boolean = true
+  override fun addPropertyChangeListener(listener: PropertyChangeListener) {}
+  override fun removePropertyChangeListener(listener: PropertyChangeListener) {}
+  override fun dispose() {
+    isDisposed = true
+  }
 }

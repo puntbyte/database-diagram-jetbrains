@@ -3,28 +3,33 @@
 .schema-hud {
   position: absolute;
   bottom: 20px;
-  right: 20px;
+  left: 20px; /* moved from right -> left */
+  right: auto;
   background: var(--table-bg);
   border: 1px solid var(--table-border);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   display: flex;
-  align-items: center;
-  padding: 6px;
-  gap: 12px;
+  flex-direction: column-reverse; /* make new groups stack upward */
+  align-items: flex-start; /* left-align controls */
+  padding: 8px;
+  gap: 8px;
   z-index: 1000;
   user-select: none;
 }
 
+/* Groups are stacked vertically; when the HUD grows, it expands upward */
 .hud-group {
   display: flex;
-  gap: 4px;
+  gap: 6px;
+  align-items: center;
 }
 
-/* Add a visual divider between zoom and line style */
+/* Keep a visible divider when multiple groups are present */
 .hud-group + .hud-group {
-  border-left: 1px solid var(--table-border);
-  padding-left: 12px;
+  border-top: 1px solid var(--table-border);
+  padding-top: 8px;
+  margin-top: 6px;
 }
 
 .hud-btn {
@@ -40,16 +45,12 @@
   font-size: 16px;
   font-weight: bold;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.12s;
 }
 
 .hud-btn:hover {
-  background: rgba(var(--header-rgb), 0.1);
+  background: rgba(var(--header-rgb), 0.06);
   color: var(--header-bg);
-}
-
-.hud-btn:active {
-  background: rgba(var(--header-rgb), 0.2);
 }
 
 .hud-select {
@@ -63,6 +64,9 @@
   cursor: pointer;
 }
 
-.hud-select:focus {
-  border-color: var(--header-bg);
+/* Grid helper classes (toggle) - controlled by JS on .schema-wrapper */
+.schema-wrapper.grid-visible {
+  background-image: linear-gradient(to right, var(--line-color) 1px, transparent 1px),
+  linear-gradient(to bottom, var(--line-color) 1px, transparent 1px);
+  background-size: 20px 20px; /* base grid spacing, will be transformed by pan/zoom */
 }
