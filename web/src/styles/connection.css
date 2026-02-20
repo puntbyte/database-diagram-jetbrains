@@ -1,0 +1,118 @@
+/* web/src/styles/connection.css */
+
+.connection-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  overflow: visible;
+}
+
+.connection-group {
+  pointer-events: auto; /* Allow hovering on lines */
+  cursor: pointer;
+}
+
+/* 1. HIT AREA (Invisible, Thick) */
+.relation-hit-area {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 20px; /* Generous hover area */
+}
+
+/* 2. BASE LINE (The structure) */
+.relation-line-base {
+  fill: none;
+  stroke: var(--line-color);
+  stroke-width: 2px;
+  stroke-linecap: round;
+  transition: stroke 0.3s, stroke-width 0.3s;
+}
+
+/* 3. FLOW LINE (The Animation Overlay) */
+.relation-line-flow {
+  fill: none;
+  stroke: var(--header-bg); /* Theme color */
+  stroke-width: 2px;
+  stroke-linecap: round;
+
+  /* IDLE STATE: Intermittent "Packet" Flow */
+  /* Long gap (150px) between short dashes (15px) */
+  stroke-dasharray: 15 150;
+  opacity: 0.4;
+  animation: flowAnimation 5s linear infinite;
+}
+
+/* --- ANIMATIONS --- */
+
+@keyframes flowAnimation {
+  to {
+    stroke-dashoffset: -165; /* Must match sum of dasharray (15+150) */
+  }
+}
+
+@keyframes continuousFlow {
+  to {
+    stroke-dashoffset: -24; /* Faster, tighter loop */
+  }
+}
+
+/* --- HIGHLIGHT STATES (Hovering) --- */
+
+/* When highlighted, the connection gets excited */
+.connection-group.highlighted .relation-line-base {
+  stroke: var(--header-bg);
+  stroke-width: 3px;
+  opacity: 0.5; /* Fade base slightly so flow pops */
+}
+
+.connection-group.highlighted .relation-line-flow {
+  opacity: 1;
+  stroke-width: 3px;
+  stroke-dasharray: 12 12; /* Tight dotted line */
+  animation: continuousFlow 0.8s linear infinite; /* Fast continuous flow */
+  filter: drop-shadow(0 0 4px var(--header-bg)); /* Glow effect */
+}
+
+/* ANCHORS */
+.anchor-port {
+  fill: var(--bg-color);
+  stroke: var(--line-color);
+  stroke-width: 2px;
+  transition: all 0.3s;
+}
+
+.anchor-port.highlighted {
+  stroke: var(--header-bg);
+  fill: var(--header-bg);
+  r: 5px;
+  filter: drop-shadow(0 0 3px var(--header-bg));
+}
+
+/* LABELS */
+.label-bg {
+  fill: var(--bg-color);
+  stroke: var(--table-border);
+  transition: all 0.3s;
+}
+
+.connection-group.highlighted .label-bg {
+  stroke: var(--header-bg);
+  fill: #fff;
+}
+
+.relation-label-text {
+  font-size: 10px;
+  font-weight: 700;
+  fill: var(--text-secondary);
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+.connection-group.highlighted .relation-label-text {
+  fill: var(--header-bg);
+}

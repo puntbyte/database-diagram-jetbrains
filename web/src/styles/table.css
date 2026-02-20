@@ -1,0 +1,125 @@
+/* web/src/styles/table.css */
+
+.db-table {
+  position: absolute;
+  top: 0;
+  left: 0;
+  min-width: 200px; /* Minimum width constraint */
+  width: auto; /* Default to content if no width set */
+  background: var(--table-bg);
+  border: 1px solid var(--table-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.db-table.dragging, .db-table.resizing {
+  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+  z-index: 100;
+}
+
+.db-table.dragging {
+  cursor: grabbing;
+}
+
+.db-table.resizing {
+  cursor: col-resize;
+}
+
+/* HEADER */
+.db-table-header {
+  background: var(--header-bg);
+  color: var(--header-text);
+  padding: 10px;
+  font-weight: bold;
+  border-top-left-radius: 7px;
+  border-top-right-radius: 7px;
+  cursor: grab; /* Only the header is draggable */
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.db-table-header:active {
+  cursor: grabbing;
+}
+
+.header-title-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.table-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  opacity: 0.9;
+}
+
+.table-icon svg {
+  width: 100%;
+  height: 100%;
+  stroke-width: 2.5px;
+}
+
+.title {
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.schema-banner {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.table-note {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+  margin-top: 4px;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* RESIZE HANDLE */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 12px; /* Wider hit area */
+  height: 100%;
+  cursor: col-resize;
+  z-index: 50; /* Ensure it's above everything else */
+
+  /* Always visible thin line, hover for wider highlight */
+  background: transparent;
+  border-right: 4px solid rgba(0, 0, 0, 0.1); /* Visible guide on the right edge */
+  transition: all 0.2s;
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+.resize-handle:hover,
+.db-table.resizing .resize-handle {
+  background-color: rgba(59, 130, 246, 0.1); /* Blue tint on hover */
+  border-right: 4px solid var(--header-bg); /* Solid color on hover */
+}
+
+/* Dark mode overrides */
+body.dark .resize-handle {
+  border-right: 4px solid rgba(255, 255, 255, 0.1);
+}
+
+body.dark .resize-handle:hover {
+  border-right: 4px solid var(--header-bg);
+}
