@@ -1,5 +1,3 @@
-/* web/src/styles/connection.css */
-
 .connection-layer {
   position: absolute;
   top: 0;
@@ -50,13 +48,15 @@
 
 @keyframes flowAnimation {
   to {
-    stroke-dashoffset: -165; /* Must match sum of dasharray (15+150) */
+    /* CHANGED: Positive value reverses direction compared to negative */
+    stroke-dashoffset: 165; /* Must match sum of dasharray (15+150) */
   }
 }
 
 @keyframes continuousFlow {
   to {
-    stroke-dashoffset: -24; /* Faster, tighter loop */
+    /* CHANGED: Positive value reverses direction */
+    stroke-dashoffset: 24;
   }
 }
 
