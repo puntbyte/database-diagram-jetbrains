@@ -20,6 +20,17 @@ export interface DbTable {
   indexes?: IndexDef[];
 }
 
+export interface DbNote {
+  id: string;
+  name: string;
+  content: string;
+  x: number;
+  y: number;
+  width: number;
+  height?: number;
+  color?: string;
+}
+
 export interface DbField {
   name: string;
   type: string;
@@ -48,7 +59,10 @@ export interface ProjectSettings {
   zoom?: number;
   panX?: number;
   panY?: number;
-  showGrid?: string | boolean; // <--- Changed from 'string' to 'string | boolean'
+  showGrid?: boolean;
+  gridSize?: number; // New
   lineStyle?: string;
+  databaseType?: string; // New
+  note?: string;
   [key: string]: any;
 }

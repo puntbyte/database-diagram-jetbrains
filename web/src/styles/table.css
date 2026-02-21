@@ -19,7 +19,6 @@
     flex-direction: column;
 
     /* Important: Overlay is absolute relative to this */
-    position: absolute;
 }
 
 .db-table.dragging, .db-table.resizing {

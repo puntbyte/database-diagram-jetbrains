@@ -1,20 +1,28 @@
-// web/src/components/connection/logic.ts
-
-import type {Rect, Point, ConnectionPathData, LineStyle} from './types';
+import type {Rect, Point, ConnectionPathData, LineStyle, EndpointsConfig} from './types';
 
 export class ConnectionLogic {
-  private static readonly MIN_STRAIGHT = 15;
-  private static readonly MAX_STRAIGHT = 40;
+  private static readonly MIN_STRAIGHT = 20;
+  private static readonly MAX_STRAIGHT = 80; // Increased to allow more lanes
+  private static readonly LANE_WIDTH = 10;   // Distance between parallel lines
   private static readonly LABEL_OFFSET = 25;
 
   static calculatePath(
       fromRect: Rect, toRect: Rect,
       fromId: string, toId: string,
       fromTableId: string, toTableId: string,
-      style: LineStyle = 'Curve'
+      style: LineStyle,
+      config: EndpointsConfig
   ): ConnectionPathData {
-    const fromY = fromRect.y + fromRect.height / 2;
-    const toY = toRect.y + toRect.height / 2;
+
+    // 1. Vertical Anchor Spacing (Based on Column Grouping)
+    const getAnchorY = (rect: Rect, idx: number, tot: number) => {
+      if (tot <= 1) return rect.y + rect.height / 2;
+      // Distribute evenly within the row height
+      return rect.y + (rect.height * (idx + 1)) / (tot + 1);
+    };
+
+    const fromY = getAnchorY(fromRect, config.fromColIndex, config.fromColTotal);
+    const toY = getAnchorY(toRect, config.toColIndex, config.toColTotal);
 
     const fromRight = {x: fromRect.x + fromRect.width, y: fromY};
     const fromLeft = {x: fromRect.x, y: fromY};
@@ -42,16 +50,29 @@ export class ConnectionLogic {
       }
     }
 
-    const distH = Math.abs(end.x - start.x);
-    const offset = Math.max(this.MIN_STRAIGHT, Math.min(this.MAX_STRAIGHT, distH / 3));
+    // 2. Path Offset (Based on Table-Side Lane Grouping)
+    // We use the lane index to push lines further out to prevent crossing
+    const isOrthogonal = (style === 'Rectilinear' || style === 'RoundRectilinear');
 
-    // Control points for bezier or corners for orthogonal
-    const p1 = { x: start.x + (offset * dirStart), y: start.y };
-    const p2 = { x: end.x + (offset * dirEnd), y: end.y };
+    // Base distance calc
+    const distH = Math.abs(end.x - start.x);
+    let baseOffset = Math.max(this.MIN_STRAIGHT, Math.min(this.MAX_STRAIGHT, distH / 2));
+
+    // Apply Lane Offsets
+    // If we have many lanes, we might need to reduce the base slightly to make room,
+    // or just let them expand. Here we let them expand.
+    const offsetFrom = baseOffset + (isOrthogonal ? (config.fromLaneIndex * this.LANE_WIDTH) : 0);
+    const offsetTo = baseOffset + (isOrthogonal ? (config.toLaneIndex * this.LANE_WIDTH) : 0);
+
+    const p1 = { x: start.x + (offsetFrom * dirStart), y: start.y };
+    const p2 = { x: end.x + (offsetTo * dirEnd), y: end.y };
 
     if (isUTurn) {
-      const uTurnOffset = Math.max(40, Math.abs(end.y - start.y) * 0.4);
-      p1.x = Math.max(start.x, end.x) + uTurnOffset;
+      const uTurnOffset = Math.max(40, Math.abs(end.y - start.y) * 0.5);
+      // For U-Turns, we also stagger the "far" edge to prevent overlap
+      const laneAdjust = isOrthogonal ? (Math.max(config.fromLaneIndex, config.toLaneIndex) * this.LANE_WIDTH) : 0;
+
+      p1.x = Math.max(start.x, end.x) + uTurnOffset + laneAdjust;
       p2.x = p1.x;
     }
 
@@ -67,8 +88,8 @@ export class ConnectionLogic {
         if (style === 'Rectilinear') {
           d = `M ${start.x} ${start.y} L ${corner1.x} ${corner1.y} L ${corner2.x} ${corner2.y} L ${end.x} ${end.y}`;
         } else {
-          // Round Rectilinear
-          const r = Math.min(15, Math.abs(corner2.y - corner1.y) / 2, Math.abs(corner1.x - start.x) / 2);
+          // Radius logic
+          const r = Math.min(12, Math.abs(corner2.y - corner1.y) / 2, Math.abs(corner1.x - start.x) / 2);
           const dirY = end.y > start.y ? 1 : -1;
           const dirX1 = corner1.x > start.x ? 1 : -1;
           const dirX2 = end.x > corner2.x ? 1 : -1;
@@ -84,37 +105,41 @@ export class ConnectionLogic {
       }
 
       case 'Oblique':
-      case 'RoundOblique': {
-        if (style === 'Oblique') {
-          d = `M ${start.x} ${start.y} L ${p1.x} ${p1.y} L ${p2.x} ${p2.y} L ${end.x} ${end.y}`;
-        } else {
-          // Round Oblique (uses small bezier curves at the joints)
-          d = `M ${start.x} ${start.y} 
-               L ${p1.x} ${p1.y} 
-               Q ${(p1.x + p2.x)/2} ${(p1.y + p2.y)/2} ${p2.x} ${p2.y} 
-               L ${end.x} ${end.y}`;
-        }
+        d = `M ${start.x} ${start.y} L ${p1.x} ${p1.y} L ${p2.x} ${p2.y} L ${end.x} ${end.y}`;
         break;
-      }
+
+      case 'RoundOblique':
+        d = `M ${start.x} ${start.y} 
+             L ${p1.x} ${p1.y} 
+             Q ${(p1.x + p2.x)/2} ${(p1.y + p2.y)/2} ${p2.x} ${p2.y} 
+             L ${end.x} ${end.y}`;
+        break;
 
       case 'Curve':
-      default: {
+      default:
         d = `M ${start.x} ${start.y} C ${p1.x} ${p1.y}, ${p2.x} ${p2.y}, ${end.x} ${end.y}`;
         break;
-      }
     }
 
-    const labelStart = this.getLabelPos(start, p1);
-    const labelEnd = this.getLabelPos(end, p2);
+    const labelStart = this.getLabelPos(start, p1, config.fromStagger);
+    const labelEnd = this.getLabelPos(end, p2, config.toStagger);
 
-    return {d, start, end, labelStart, labelEnd, fromId, toId, fromTableId, toTableId};
+    return {
+      d, start, end,
+      labelStart: { text: config.fromLabel, pos: labelStart },
+      labelEnd: { text: config.toLabel, pos: labelEnd },
+      fromId, toId, fromTableId, toTableId
+    };
   }
 
-  private static getLabelPos(anchor: Point, target: Point): Point {
+  private static getLabelPos(anchor: Point, target: Point, stagger: number): Point {
     const dx = target.x - anchor.x;
     const dy = target.y - anchor.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    const ratio = this.LABEL_OFFSET / (dist || 1);
+
+    const offsetDist = this.LABEL_OFFSET + (stagger * 18);
+
+    const ratio = offsetDist / (dist || 1);
     return {x: anchor.x + dx * ratio, y: anchor.y + dy * ratio};
   }
 }
