@@ -21,7 +21,11 @@ class SchemaPreviewFileEditor(
 ) : UserDataHolderBase(), FileEditor, WebviewPanel.WebviewListener {
 
   private val webviewPanel = WebviewPanel(this, file, this)
-  private var isDisposed = false
+
+  // Publicly readable for the Provider to check
+  @Volatile
+  var isDisposed = false
+    private set
 
   init {
     val connection = ApplicationManager.getApplication().messageBus.connect(this)
@@ -36,8 +40,7 @@ class SchemaPreviewFileEditor(
 
   fun render(content: String) {
     if (isDisposed) return
-    val format = file.extension ?: "dbml"
-    webviewPanel.updateSchema(format, content)
+    webviewPanel.updateSchema(format = file.extension ?: "dbml", content = content)
   }
 
   private fun updateTheme() {
@@ -48,22 +51,28 @@ class SchemaPreviewFileEditor(
   }
 
   override fun onWebviewReady() {
+    if (isDisposed) return
     updateTheme()
   }
 
   // --- Synchronization Logic ---
 
   override fun onTablePositionUpdated(tableName: String, x: Int, y: Int, width: Int?) {
+    if (isDisposed || project.isDisposed) return // Safety check
+
     val document = ApplicationManager.getApplication().runReadAction<Document?> {
       FileDocumentManager.getInstance().getDocument(file)
     } ?: return
 
-    if (!ApplicationManager.getApplication().runReadAction<Boolean> { document.isWritable }) return
+    // Verify file is writable
+    if (!file.isValid || !document.isWritable) return
 
     WriteCommandAction.runWriteCommandAction(project) {
+      if (isDisposed || project.isDisposed) return@runWriteCommandAction
       try {
         updateTableSettings(document, tableName, x, y, width)
       } catch (e: Exception) {
+        // Log but don't crash
         e.printStackTrace()
       }
     }
@@ -98,9 +107,7 @@ class SchemaPreviewFileEditor(
       var newSettings = source
 
       fun replaceOrAppend(key: String, value: Any) {
-        // Matches "key: 123", "key: -50"
         val keyRegex = Regex("""(\b$key\s*:\s*)([-\d.]+)""", RegexOption.IGNORE_CASE)
-
         newSettings = if (keyRegex.containsMatchIn(newSettings)) {
           newSettings.replace(keyRegex, "$1$value")
         } else {
@@ -135,13 +142,16 @@ class SchemaPreviewFileEditor(
   }
 
   override fun onProjectSettingsUpdated(settings: Map<String, String?>) {
+    if (isDisposed || project.isDisposed) return
+
     val document = ApplicationManager.getApplication().runReadAction<Document?> {
       FileDocumentManager.getInstance().getDocument(file)
     } ?: return
 
-    if (!ApplicationManager.getApplication().runReadAction<Boolean> { document.isWritable }) return
+    if (!file.isValid || !document.isWritable) return
 
     WriteCommandAction.runWriteCommandAction(project) {
+      if (isDisposed || project.isDisposed) return@runWriteCommandAction
       try {
         updateProjectBlock(document, settings, file.nameWithoutExtension)
       } catch (e: Exception) {
@@ -156,8 +166,6 @@ class SchemaPreviewFileEditor(
     defaultProjectName: String?
   ) {
     val text = document.text
-
-    // Regex: Project [optional_name] { ... }
     val projectRegex = Regex("""Project(?:\s+("?[^"{]*"?))?\s*\{([\s\S]*?)}""", RegexOption.IGNORE_CASE)
     val match = projectRegex.find(text)
 
@@ -174,8 +182,6 @@ class SchemaPreviewFileEditor(
       for ((key, value) in settings) {
         if (value == null) continue
         val formattedVal = formatValue(value)
-
-        // Matches "key: value"
         val keyRegex = Regex("""(\b$key\s*:\s*)(.*)""")
 
         newBody = if (keyRegex.containsMatchIn(newBody)) {
@@ -206,7 +212,9 @@ class SchemaPreviewFileEditor(
   override fun isValid(): Boolean = true
   override fun addPropertyChangeListener(listener: PropertyChangeListener) {}
   override fun removePropertyChangeListener(listener: PropertyChangeListener) {}
+
   override fun dispose() {
     isDisposed = true
+    // webviewPanel is disposed automatically via parent disposable relationship
   }
 }

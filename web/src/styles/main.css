@@ -1,5 +1,3 @@
-/* web/src/styles/main.css */
-
 @import './table.css';
 @import './column.css';
 @import './connection.css';
@@ -15,6 +13,10 @@
   --text-primary: #1f2937;
   --text-secondary: #6b7280;
   --line-color: #9ca3af;
+
+  /* UPDATED: Lighter Axis Lines */
+  --grid-line: rgba(0, 0, 0, 0.04);
+  --axis-line: rgba(0, 0, 0, 0.08); /* Reduced from 0.2 */
 }
 
 body.dark {
@@ -27,6 +29,10 @@ body.dark {
   --text-primary: #d1d5db;
   --text-secondary: #9ca3af;
   --line-color: #6b7280;
+
+  /* UPDATED: Lighter Axis Lines (Dark Mode) */
+  --grid-line: rgba(255, 255, 255, 0.04);
+  --axis-line: rgba(255, 255, 255, 0.08); /* Reduced from 0.2 */
 }
 
 body {
@@ -41,9 +47,35 @@ body {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
+  position: relative;
+
+  --zoom: 1;
+  --pan-x: 0px;
+  --pan-y: 0px;
 }
 
-/* The Wrapper that Panzoom moves */
+#app.grid-visible {
+  background-image:
+      linear-gradient(to right, var(--axis-line) 2px, transparent 2px),
+      linear-gradient(to bottom, var(--axis-line) 2px, transparent 2px),
+      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+
+  background-repeat: no-repeat, no-repeat, repeat, repeat;
+
+  background-position:
+      var(--pan-x) 0,
+      0 var(--pan-y),
+      var(--pan-x) var(--pan-y),
+      var(--pan-x) var(--pan-y);
+
+  background-size:
+      2px 100%,
+      100% 2px,
+      calc(20px * var(--zoom)) calc(20px * var(--zoom)),
+      calc(20px * var(--zoom)) calc(20px * var(--zoom));
+}
+
 .schema-wrapper {
   width: 100%;
   height: 100%;

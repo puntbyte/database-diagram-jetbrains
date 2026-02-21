@@ -1,35 +1,38 @@
-/* web/src/styles/hud.css */
-
 .schema-hud {
   position: absolute;
   bottom: 20px;
-  left: 20px; /* moved from right -> left */
+  left: 20px;
   right: auto;
   background: var(--table-bg);
   border: 1px solid var(--table-border);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+  /* CHANGED: Horizontal Layout */
   display: flex;
-  flex-direction: column-reverse; /* make new groups stack upward */
-  align-items: flex-start; /* left-align controls */
-  padding: 8px;
-  gap: 8px;
+  flex-direction: row;
+  align-items: center;
+  padding: 6px 12px;
+  gap: 12px;
+
   z-index: 1000;
   user-select: none;
 }
 
-/* Groups are stacked vertically; when the HUD grows, it expands upward */
 .hud-group {
   display: flex;
   gap: 6px;
   align-items: center;
 }
 
-/* Keep a visible divider when multiple groups are present */
+/* Vertical Divider for Horizontal Groups */
 .hud-group + .hud-group {
-  border-top: 1px solid var(--table-border);
-  padding-top: 8px;
-  margin-top: 6px;
+  border-top: none;
+  margin-top: 0;
+
+  border-left: 1px solid var(--table-border);
+  padding-left: 12px;
+  margin-left: 0px;
 }
 
 .hud-btn {
@@ -48,25 +51,82 @@
   transition: all 0.12s;
 }
 
-.hud-btn:hover {
-  background: rgba(var(--header-rgb), 0.06);
+.hud-btn:hover, .hud-btn.active {
+  background: rgba(var(--header-rgb), 0.1);
   color: var(--header-bg);
 }
 
-.hud-select {
+/* --- CUSTOM UPWARD DROPDOWN STYLES --- */
+
+.custom-select {
+  position: relative;
+  font-size: 12px;
+  min-width: 120px;
+}
+
+.select-trigger {
   background: var(--bg-color);
   color: var(--text-primary);
   border: 1px solid var(--table-border);
   border-radius: 4px;
-  padding: 4px 8px;
-  font-size: 12px;
-  outline: none;
+  padding: 4px 24px 4px 8px; /* space for arrow */
   cursor: pointer;
+  white-space: nowrap;
+  position: relative;
+  height: 28px;
+  display: flex;
+  align-items: center;
 }
 
-/* Grid helper classes (toggle) - controlled by JS on .schema-wrapper */
-.schema-wrapper.grid-visible {
-  background-image: linear-gradient(to right, var(--line-color) 1px, transparent 1px),
-  linear-gradient(to bottom, var(--line-color) 1px, transparent 1px);
-  background-size: 20px 20px; /* base grid spacing, will be transformed by pan/zoom */
+/* Custom arrow */
+.select-trigger::after {
+  content: '▲'; /* Pointing up because menu opens up */
+  font-size: 8px;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.6;
+}
+
+.select-options {
+  display: none; /* Hidden by default */
+  position: absolute;
+
+  /* EXPAND UPWARD LOGIC */
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 8px; /* Gap between button and menu */
+
+  background: var(--table-bg);
+  border: 1px solid var(--table-border);
+  border-radius: 6px;
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.15);
+  width: 100%;
+  min-width: 140px;
+  overflow: hidden;
+  z-index: 1001;
+  flex-direction: column;
+}
+
+.custom-select.open .select-options {
+  display: flex;
+}
+
+.select-option {
+  padding: 8px 12px;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: background 0.1s;
+}
+
+.select-option:hover {
+  background: rgba(var(--header-rgb), 0.1);
+  color: var(--header-bg);
+}
+
+.select-option.selected {
+  font-weight: bold;
+  background: rgba(var(--header-rgb), 0.05);
+  color: var(--header-bg);
 }
