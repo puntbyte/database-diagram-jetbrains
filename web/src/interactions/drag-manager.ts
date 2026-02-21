@@ -54,10 +54,10 @@ export class DragManager {
       return;
     }
 
-    // Check for Header (Drag)
-    const header = target.closest('.db-table-header');
-    if (header) {
-      const table = header.parentElement as HTMLElement;
+    // Check for Header (Drag) OR Semantic Overlay (Drag)
+    // ADDED: .semantic-overlay check
+    if (target.closest('.db-table-header') || target.closest('.semantic-overlay')) {
+      const table = target.closest('.db-table') as HTMLElement;
       if (table) this.startDrag(table, e);
       return;
     }

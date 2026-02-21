@@ -1,11 +1,15 @@
 /* web/src/styles/table.css */
 
 .db-table {
+    /* Default fallback */
+    --table-main-color: var(--header-bg);
+
     position: absolute;
     top: 0;
     left: 0;
     min-width: 200px;
     width: auto;
+
     background: var(--table-bg);
     border: 1px solid var(--table-border);
     border-radius: 8px;
@@ -13,101 +17,150 @@
     z-index: 1;
     display: flex;
     flex-direction: column;
-    transition: box-shadow 0.2s; /* Smooth hover effects */
+
+    /* Important: Overlay is absolute relative to this */
+    position: absolute;
 }
 
 .db-table.dragging, .db-table.resizing {
-  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
-  z-index: 100;
+    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+    z-index: 100;
 }
 
-.db-table.dragging {
-  cursor: grabbing;
-}
-
-.db-table.resizing {
-  cursor: col-resize;
-}
+.db-table.dragging { cursor: grabbing; }
+.db-table.resizing { cursor: col-resize; }
 
 /* HEADER */
 .db-table-header {
-  background: var(--header-bg);
-  color: var(--header-text);
-  padding: 6px 8px;
-  font-weight: bold;
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
-  cursor: grab; /* Only the header is draggable */
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 2px; /* Space between table name and note */
+    background: var(--header-bg); /* Normal state color */
+    /* If table has custom color, use that */
+    background-color: var(--table-main-color);
+
+    color: var(--header-text);
+    padding: 10px;
+    font-weight: bold;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+    cursor: grab;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
 .db-table-header:active {
-  cursor: grabbing;
+    cursor: grabbing;
 }
 
 .header-title-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 4px; /* Space between table icon and name */
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.table-icon {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    opacity: 0.9;
 }
 
 .title {
-  font-size: 14px;
-  line-height: 1.2;
+    font-size: 15px;
+    line-height: 1.2;
 }
 
 .schema-banner {
-  background: rgba(0, 0, 0, 0.4);
-  padding: 4px 6px;
-  border-radius: 4px;
-  font-size: 11px;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
 }
 
 .table-note {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.8);
-  margin-top: 0px;
-  width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.8);
+    margin-top: 4px;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
 
 /* RESIZE HANDLE */
 .resize-handle {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 12px; /* Wider hit area */
-  height: 100%;
-  cursor: col-resize;
-  z-index: 50; /* Ensure it's above everything else */
-
-  /* Always visible thin line, hover for wider highlight */
-  background: transparent;
-  border-right: 4px solid rgba(0, 0, 0, 0.1); /* Visible guide on the right edge */
-  transition: all 0.2s;
-  border-top-right-radius: 8px;
-  border-bottom-right-radius: 8px;
+    position: absolute;
+    top: 0; right: 0; width: 12px; height: 100%;
+    cursor: col-resize; z-index: 50;
+    background: transparent;
+    border-right: 4px solid rgba(0, 0, 0, 0.1);
+    transition: all 0.2s;
+    border-top-right-radius: 8px; border-bottom-right-radius: 8px;
+}
+.resize-handle:hover, .db-table.resizing .resize-handle {
+    background-color: rgba(59, 130, 246, 0.1);
+    border-right: 4px solid var(--header-bg);
 }
 
-.resize-handle:hover,
-.db-table.resizing .resize-handle {
-  background-color: rgba(59, 130, 246, 0.1); /* Blue tint on hover */
-  border-right: 4px solid var(--header-bg); /* Solid color on hover */
+/* =========================================
+   SEMANTIC ZOOM OVERLAY
+   ========================================= */
+
+.semantic-overlay {
+    /* Fill the entire table */
+    position: absolute;
+    top: -1px; /* Cover borders */
+    left: -1px;
+    right: -1px;
+    bottom: -1px;
+
+    background-color: var(--table-main-color);
+    color: #fff; /* Always white text on colored background */
+    border-radius: 8px; /* Match table radius */
+    z-index: 200; /* Sit above header/rows */
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 10px;
+
+    /* Initial State: Hidden */
+    opacity: 0;
+    pointer-events: none;
+
+    /* Smooth Fade */
+    transition: opacity 0.25s ease-in-out;
 }
 
-/* Dark mode overrides */
-body.dark .resize-handle {
-  border-right: 4px solid rgba(255, 255, 255, 0.1);
+.overlay-text {
+    font-weight: 700;
+    /*
+       COUNTER SCALING:
+       As zoom decreases (view gets smaller), font size increases physically
+       to maintain visual size on screen.
+    */
+    font-size: clamp(16px, calc(18px / var(--zoom)), 64px);
+
+    word-break: break-word;
+    line-height: 1.2;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
 
-body.dark .resize-handle:hover {
-  border-right: 4px solid var(--header-bg);
+/* =========================================
+   STATE TRIGGER
+   ========================================= */
+
+/* When the wrapper has the class, fade in the overlay */
+.schema-wrapper.semantic-zoom .semantic-overlay {
+    opacity: 1;
+    pointer-events: auto; /* Allow dragging via the overlay if needed */
+    cursor: grab;
+}
+
+.schema-wrapper.semantic-zoom .db-table.dragging .semantic-overlay {
+    cursor: grabbing;
 }
