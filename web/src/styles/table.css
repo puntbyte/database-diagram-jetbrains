@@ -1,18 +1,19 @@
 /* web/src/styles/table.css */
 
 .db-table {
-  position: absolute;
-  top: 0;
-  left: 0;
-  min-width: 200px; /* Minimum width constraint */
-  width: auto; /* Default to content if no width set */
-  background: var(--table-bg);
-  border: 1px solid var(--table-border);
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
+    position: absolute;
+    top: 0;
+    left: 0;
+    min-width: 200px;
+    width: auto;
+    background: var(--table-bg);
+    border: 1px solid var(--table-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    transition: box-shadow 0.2s; /* Smooth hover effects */
 }
 
 .db-table.dragging, .db-table.resizing {
@@ -32,16 +33,16 @@
 .db-table-header {
   background: var(--header-bg);
   color: var(--header-text);
-  padding: 10px;
+  padding: 6px 8px;
   font-weight: bold;
-  border-top-left-radius: 7px;
-  border-top-right-radius: 7px;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
   cursor: grab; /* Only the header is draggable */
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 2px; /* Space between table name and note */
 }
 
 .db-table-header:active {
@@ -51,38 +52,25 @@
 .header-title-wrapper {
   display: flex;
   align-items: center;
-  gap: 6px;
-}
-
-.table-icon {
-  width: 16px;
-  height: 16px;
-  display: flex;
-  opacity: 0.9;
-}
-
-.table-icon svg {
-  width: 100%;
-  height: 100%;
-  stroke-width: 2.5px;
+  gap: 4px; /* Space between table icon and name */
 }
 
 .title {
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.2;
 }
 
 .schema-banner {
-  background: rgba(255, 255, 255, 0.2);
-  padding: 2px 6px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 4px 6px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .table-note {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.8);
-  margin-top: 4px;
+  margin-top: 0px;
   width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;

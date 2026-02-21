@@ -1,0 +1,100 @@
+/* web/src/styles/icons.css */
+
+:root {
+    /* Key Colors - Light Mode */
+    --icon-pk: #d97706;    /* Amber-600 */
+    --icon-fk: #2563eb;    /* Blue-600 */
+    --icon-pk-fk: #16a34a; /* Green-600 */
+    --icon-default: var(--text-secondary);
+}
+
+body.dark {
+    /* Key Colors - Dark Mode (Brighter/Pastel) */
+    --icon-pk: #fbbf24;    /* Amber-400 */
+    --icon-fk: #60a5fa;    /* Blue-400 */
+    --icon-pk-fk: #4ade80; /* Green-400 */
+}
+
+/* --- GENERIC ICON RESET --- */
+/* This ensures any SVG inside a defined icon container behaves predictably */
+.icon-container svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+
+    /* Force the SVG to use the parent's text color */
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2px; /* Adjust thickness if needed */
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* Handle SVGs that might use fill instead of stroke (optional override) */
+.icon-container.fill-mode svg {
+    fill: currentColor;
+    stroke: none;
+}
+
+/* --- SPECIFIC ICON CONTAINERS --- */
+
+/* 1. Database Column Keys (PK/FK) */
+.key-icon {
+    width: 14px; /* Slightly larger than before (12px) */
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+
+    /* Default color */
+    color: var(--icon-default);
+}
+
+/* Apply the reset to key icons */
+.key-icon svg {
+    width: 100%;
+    height: 100%;
+    stroke: currentColor;
+    fill: none;
+}
+
+/* Color Modifiers */
+.key-icon.pk { color: var(--icon-pk); }
+.key-icon.fk { color: var(--icon-fk); }
+.key-icon.pk-fk { color: var(--icon-pk-fk); }
+.key-icon.empty { width: 14px; } /* Spacer */
+
+/* 2. Table Header Icon */
+.table-icon {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.9;
+    color: var(--header-text); /* Inherit header text color (white) */
+}
+
+.table-icon svg {
+    width: 100%;
+    height: 100%;
+    stroke: currentColor;
+    fill: none;
+}
+
+/* 3. HUD Buttons & Dropdowns */
+.hud-btn svg,
+.select-arrow svg {
+    width: 18px; /* Standard size for UI controls */
+    height: 18px;
+    stroke: currentColor;
+    fill: none;
+}
+
+/* Specific adjustment for the tiny arrow in dropdowns */
+.select-arrow svg {
+    width: 12px;
+    height: 12px;
+}
