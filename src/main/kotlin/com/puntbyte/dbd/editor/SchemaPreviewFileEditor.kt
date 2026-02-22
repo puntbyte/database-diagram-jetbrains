@@ -118,6 +118,7 @@ class SchemaPreviewFileEditor(
         }
       }
 
+
       replaceOrAppend("x", x)
       replaceOrAppend("y", y)
       if (width != null && width > 0) {
