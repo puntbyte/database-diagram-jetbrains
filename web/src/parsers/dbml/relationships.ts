@@ -1,11 +1,22 @@
 // web/src/parsers/dbml/relationships.ts
 
 import type { Cardinality, DbRelationship } from '../../models/types';
-import { sanitizeId } from './utils';
+import { parseRefPath, parseSettingsString, sanitizeId } from './utils';
 
-export function createRelationship(t1: string, c1: string, op: string, t2: string, c2: string): DbRelationship {
-  const clean = (s: string) => s.replace(/"/g, '');
+export function createRelationship(
+    t1: string, c1: string[],
+    op: string,
+    t2: string, c2: string[],
+    settings?: Map<string, string>
+): DbRelationship {
+
   let type: Cardinality = '1:n';
+
+  // Normalize DBML operators to Cardinality
+  // < : one-to-many (T1(1) < T2(n)) -> T1 is 1, T2 is n
+  // > : many-to-one (T1(n) > T2(1)) -> T1 is n, T2 is 1
+  // - : one-to-one
+  // <>: many-to-many
 
   if (op === '<') type = '1:n';
   else if (op === '>') type = 'n:1';
@@ -13,31 +24,91 @@ export function createRelationship(t1: string, c1: string, op: string, t2: strin
   else if (op === '<>') type = 'm:n';
 
   return {
-    fromTable: sanitizeId(clean(t1)),
-    fromColumn: clean(c1),
-    toTable: sanitizeId(clean(t2)),
-    toColumn: clean(c2),
-    type
+    fromTable: t1,
+    fromColumns: c1,
+    toTable: t2,
+    toColumns: c2,
+    type,
+    settings: settings ? Object.fromEntries(settings) : undefined
   };
 }
 
 export function parseStandaloneRefs(text: string): DbRelationship[] {
   const relationships: DbRelationship[] = [];
 
-  // Pattern: Table.Col <Op> Table.Col
-  const refPattern = /("?[\w.]+"?)\.("?[\w"]+"?)\s*(<>|[<>=-])\s*("?[\w.]+"?)\.("?[\w"]+"?)/g;
+  // 1. Parse LONG FORM: Ref [name] { ... }
+  const longFormRegex = /Ref\s*(?:[a-zA-Z0-9_]+)?\s*\{([\s\S]*?)\}/gi;
+  let match;
 
-  // Pattern: Ref [name] { ... }
-  const refBlockRegex = /Ref\s*[^{:]*[:\{]\s*([^}]+)\s*\}?/gi;
+  // We remove the Long Form blocks from text after parsing to avoid double matching
+  // with the Short Form parser if we were to run them sequentially on same text.
+  // Ideally, we iterate through the text.
 
-  let rMatch;
-  while ((rMatch = refBlockRegex.exec(text)) !== null) {
-    const content = rMatch[1];
-    let m;
-    while ((m = refPattern.exec(content)) !== null) {
-      relationships.push(createRelationship(m[1], m[2], m[3], m[4], m[5]));
-    }
+  while ((match = longFormRegex.exec(text)) !== null) {
+    const body = match[1];
+    // Inside body: path <op> path [settings]
+    parseRefLines(body, relationships);
+  }
+
+  // 2. Parse SHORT FORM: Ref [name]: ...
+  // Match lines starting with Ref:
+  const shortFormRegex = /Ref\s*(?:[a-zA-Z0-9_]+)?\s*:\s*(.*)/gi;
+  while ((match = shortFormRegex.exec(text)) !== null) {
+    const line = match[1];
+    parseRefLines(line, relationships);
   }
 
   return relationships;
+}
+
+function parseRefLines(content: string, relationships: DbRelationship[]) {
+  const lines = content.split('\n');
+
+  for (let line of lines) {
+    line = line.trim();
+    if (!line || line.startsWith('//')) continue;
+
+    // Pattern: Endpoint1 Operator Endpoint2 [Settings]
+    // Endpoint can contain dots and parenthesis: schema.table.(c1,c2)
+    // Operator: <, >, -, <>
+    // We split by the operator.
+
+    // Regex to find the operator and split the string
+    // Capture groups: 1=Left, 2=Operator, 3=RightRest
+    const opRegex = /^(.*?)\s*(<>|[<>=-])\s*(.*)$/;
+    const opMatch = opRegex.exec(line);
+
+    if (!opMatch) continue;
+
+    const leftRaw = opMatch[1].trim();
+    const op = opMatch[2];
+    const rightRest = opMatch[3].trim();
+
+    // Separate Right side from Settings
+    // Look for starting '['
+    let rightRaw = rightRest;
+    let settingsStr = '';
+
+    const settingIdx = rightRest.indexOf('[');
+    if (settingIdx !== -1) {
+      rightRaw = rightRest.substring(0, settingIdx).trim();
+      const endIdx = rightRest.lastIndexOf(']');
+      if (endIdx !== -1) {
+        settingsStr = rightRest.substring(settingIdx + 1, endIdx);
+      }
+    }
+
+    const leftData = parseRefPath(leftRaw);
+    const rightData = parseRefPath(rightRaw);
+    const settings = parseSettingsString(settingsStr);
+
+    if (leftData && rightData) {
+      relationships.push(createRelationship(
+          leftData.table, leftData.columns,
+          op,
+          rightData.table, rightData.columns,
+          settings
+      ));
+    }
+  }
 }

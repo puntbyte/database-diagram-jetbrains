@@ -99,3 +99,38 @@ export function extractDocComments(fullText: string, startIndex: number): string
 
   return comments.length > 0 ? comments.join('\n') : undefined;
 }
+
+/**
+ * Parses a DBML Ref path which could be:
+ * 1. table.column
+ * 2. schema.table.column
+ * 3. table.(col1, col2)
+ * 4. schema.table.(col1, col2)
+ */
+export function parseRefPath(path: string): { table: string, columns: string[] } | null {
+  const clean = path.trim();
+
+  // check for composite keys: something.(...)
+  const compositeMatch = /^(.*)\.\((.*)\)$/.exec(clean);
+
+  if (compositeMatch) {
+    const tablePart = compositeMatch[1];
+    const colsPart = compositeMatch[2];
+    return {
+      table: sanitizeId(tablePart),
+      columns: colsPart.split(',').map(c => c.trim())
+    };
+  }
+
+  // standard single column: schema.table.col or table.col
+  const parts = clean.split('.');
+  if (parts.length < 2) return null;
+
+  const col = parts.pop()!;
+  const table = parts.join('.'); // Rejoin schema.table
+
+  return {
+    table: sanitizeId(table),
+    columns: [col]
+  };
+}

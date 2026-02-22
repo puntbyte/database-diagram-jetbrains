@@ -35,11 +35,17 @@
 /* Resize Handle logic re-used from tables, but styled for notes */
 .sticky-note .resize-handle {
   position: absolute;
+  /* CHANGED: Position at bottom right */
   bottom: 0;
   right: 0;
+  top: auto;
+
   width: 15px;
   height: 15px;
-  cursor: nwse-resize;
+  cursor: nwse-resize; /* Correct diagonal cursor */
+
+  /* Visual triangle */
   background: linear-gradient(135deg, transparent 50%, rgba(0,0,0,0.1) 50%);
-  border-radius: 0 0 2px 0;
+  border-bottom-right-radius: 2px;
+  z-index: 10;
 }

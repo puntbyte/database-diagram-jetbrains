@@ -1,5 +1,3 @@
-// web/src/main.ts
-
 import { Bridge, type ServerMessage } from "./core/bridge";
 import { SchemaRenderer } from "./core/renderer";
 import "./styles/main.css";
@@ -18,34 +16,50 @@ const bridge = new Bridge((msg: ServerMessage) => {
 
 // 2. Initialize Renderer
 // - Callback 1: On Table Move/Resize -> Update Table Settings
-// - (Callback 2 for Pan/Zoom tracking is removed to stop saving those settings)
 const renderer = new SchemaRenderer(
-  "app",
-  (tableName, x, y, width) => {
-    bridge.send({
-      type: "UPDATE_TABLE_POS",
-      tableName: tableName,
-      x: x,
-      y: y,
-      width: width
-    });
-  }
+    "app",
+    (tableName, x, y, width) => {
+      bridge.send({
+        type: "UPDATE_TABLE_POS",
+        tableName: tableName,
+        x: x,
+        y: y,
+        width: width
+      });
+    }
 );
 
-// 3. Listen for HUD Events (Grid Toggle, Line Style)
+// 3. Listen for Interactions
 const app = document.getElementById('app')!;
+
+// A. Project Settings (Grid, Zoom, Line Style)
 app.addEventListener('project-settings-changed', (e: any) => {
   const partial = e.detail || {};
-
-  // Only send Grid and Line Style settings.
-  // Zoom and Pan are no longer sent to the backend.
   bridge.send({
     type: "UPDATE_PROJECT_SETTINGS",
     settings: {
-      lineStyle: partial.lineStyle, // string
-      showGrid: partial.showGrid    // boolean
+      lineStyle: partial.lineStyle,
+      showGrid: partial.showGrid
+      // Zoom/Pan are typically not saved on every frame,
+      // but if you want to save them on specific actions, add them here.
     }
   });
+});
+
+// B. Sticky Note Updates (NEW)
+// This event is dispatched by DragManager in onMouseUp
+app.addEventListener('note-pos-changed', (e: any) => {
+  const detail = e.detail;
+  if (detail) {
+    bridge.send({
+      type: "UPDATE_NOTE_POS",
+      name: detail.name,
+      x: detail.x,
+      y: detail.y,
+      width: detail.width,
+      height: detail.height
+    });
+  }
 });
 
 // 4. Theme Logic

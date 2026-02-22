@@ -26,7 +26,8 @@ A generated project contains the following content structure:
 └── settings.gradle.kts     Gradle project settings
 ```
 
-In addition to the configuration files, the most crucial part is the `src` directory, which contains our implementation
+In addition to the configuration files, the most crucial part is the `src` directory, which contains
+our implementation
 and the manifest for our plugin – [plugin.xml][file:plugin.xml].
 
 > [!NOTE]
@@ -34,18 +35,21 @@ and the manifest for our plugin – [plugin.xml][file:plugin.xml].
 
 ## Plugin configuration file
 
-The plugin configuration file is a [plugin.xml][file:plugin.xml] file located in the `src/main/resources/META-INF`
+The plugin configuration file is a [plugin.xml][file:plugin.xml] file located in the
+`src/main/resources/META-INF`
 directory.
 It provides general information about the plugin, its dependencies, extensions, and listeners.
 
-You can read more about this file in the [Plugin Configuration File][docs:plugin.xml] section of our documentation.
+You can read more about this file in the [Plugin Configuration File][docs:plugin.xml] section of our
+documentation.
 
 If you're still not quite sure what this is all about, read our
 introduction: [What is the IntelliJ Platform?][docs:intro]
 
 $H$H Predefined Run/Debug configurations
 
-Within the default project structure, there is a `.run` directory provided containing predefined *Run/Debug
+Within the default project structure, there is a `.run` directory provided containing predefined
+*Run/Debug
 configurations* that expose corresponding Gradle tasks:
 
 | Configuration name | Description                                                                                                                                                                         |
@@ -60,14 +64,17 @@ configurations* that expose corresponding Gradle tasks:
 ## Publishing the plugin
 
 > [!TIP]
-> Make sure to follow all guidelines listed in [Publishing a Plugin][docs:publishing] to follow all recommended and
+> Make sure to follow all guidelines listed in [Publishing a Plugin][docs:publishing] to follow all
+> recommended and
 > required steps.
 
-Releasing a plugin to [JetBrains Marketplace](https://plugins.jetbrains.com) is a straightforward operation that uses
+Releasing a plugin to [JetBrains Marketplace](https://plugins.jetbrains.com) is a straightforward
+operation that uses
 the `publishPlugin` Gradle task provided by
 the [intellij-platform-gradle-plugin][gh:intellij-platform-gradle-plugin-docs].
 
-You can also upload the plugin to the [JetBrains Plugin Repository](https://plugins.jetbrains.com/plugin/upload)
+You can also upload the plugin to
+the [JetBrains Plugin Repository](https://plugins.jetbrains.com/plugin/upload)
 manually via UI.
 
 ## Useful links

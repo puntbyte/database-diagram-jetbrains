@@ -48,10 +48,11 @@ export type Cardinality = '1:1' | '1:n' | 'n:1' | 'm:n';
 
 export interface DbRelationship {
   fromTable: string;
-  fromColumn: string;
+  fromColumns: string[]; // Changed from string to string[]
   toTable: string;
-  toColumn: string;
+  toColumns: string[];   // Changed from string to string[]
   type: Cardinality;
+  settings?: Record<string, string>; // Added settings
 }
 
 // FIX: Allow boolean for showGrid

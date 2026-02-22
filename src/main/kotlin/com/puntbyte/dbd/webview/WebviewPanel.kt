@@ -24,9 +24,11 @@ class WebviewPanel(
 ) : Disposable {
   // Define the Listener Interface here
   interface WebviewListener {
-    fun onWebviewReady()
-    fun onTablePositionUpdated(tableName: String, x: Int, y: Int, width: Int?)
-    fun onProjectSettingsUpdated(settings: Map<String, String?>)
+      fun onWebviewReady()
+      fun onTablePositionUpdated(tableName: String, x: Int, y: Int, width: Int?)
+      fun onProjectSettingsUpdated(settings: Map<String, String?>)
+      // NEW METHOD
+      fun onNotePositionUpdated(name: String, x: Int, y: Int, width: Int, height: Int)
   }
 
   companion object {
@@ -91,44 +93,42 @@ class WebviewPanel(
     browser.loadURL("data:text/html;charset=utf-8;base64,$encoded")
   }
 
-  private fun handleClientQuery(request: String?) {
-    if (request == null) return
+    private fun handleClientQuery(request: String?) {
+        if (request == null) return
+        // logger.info("Webview raw: $request")
 
-    logger.info("Webview raw message: $request")         // <--- add this
+        try {
+            val message = mapper.readValue(request, WebviewBridge.Client::class.java)
 
-    try {
-      val message = mapper.readValue(request, WebviewBridge.Client::class.java)
+            when (message) {
+                is WebviewBridge.Client.Ready -> listener.onWebviewReady()
+                is WebviewBridge.Client.Log -> logger.info("Webview: ${message.message}")
 
-      when (message) {
-        is WebviewBridge.Client.Ready -> {
-          listener.onWebviewReady()
+                is WebviewBridge.Client.UpdateTablePos -> {
+                    listener.onTablePositionUpdated(message.tableName, message.x, message.y, message.width)
+                }
+
+                is WebviewBridge.Client.UpdateProjectSettings -> {
+                    val raw = message.settings
+                    val stringMap = raw.mapValues { (_, v) -> v?.toString() }
+                    listener.onProjectSettingsUpdated(stringMap)
+                }
+
+                // NEW HANDLER
+                is WebviewBridge.Client.UpdateNotePos -> {
+                    listener.onNotePositionUpdated(
+                        message.name,
+                        message.x,
+                        message.y,
+                        message.width,
+                        message.height
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            logger.warn("Failed to parse webview message: ${e.message}")
         }
-
-        is WebviewBridge.Client.UpdateProjectSettings -> {
-          // Convert received Map<String,Any?> -> Map<String,String?>
-          val raw = message.settings
-          val stringMap = raw.mapValues { (_, v) -> v?.toString() }
-          listener.onProjectSettingsUpdated(stringMap)
-        }
-
-        is WebviewBridge.Client.UpdateTablePos -> {
-          listener.onTablePositionUpdated(
-            message.tableName,
-            message.x,
-            message.y,
-            message.width
-          )
-        }
-
-        is WebviewBridge.Client.Log -> {
-          logger.info("Webview Log: ${message.message}")
-        }
-      }
-    } catch (e: Exception) {
-      // Include raw request for easier debugging
-      logger.warn("Failed to parse webview message: ${e.message}. Raw: $request")
     }
-  }
 
   fun updateSchema(format: String, content: String) {
     val browser = jbCefBrowser ?: return

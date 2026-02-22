@@ -16,8 +16,8 @@ import java.beans.PropertyChangeListener
 import javax.swing.JComponent
 
 class SchemaPreviewFileEditor(
-  private val project: Project,
-  private val file: VirtualFile
+    private val project: Project,
+    private val file: VirtualFile
 ) : UserDataHolderBase(), FileEditor, WebviewPanel.WebviewListener {
 
   private val webviewPanel = WebviewPanel(this, file, this)
@@ -206,6 +206,82 @@ class SchemaPreviewFileEditor(
       document.insertString(0, sb.toString())
     }
   }
+
+    override fun onNotePositionUpdated(name: String, x: Int, y: Int, width: Int, height: Int) {
+        if (isDisposed || project.isDisposed) return
+
+        val document = ApplicationManager.getApplication().runReadAction<Document?> {
+            FileDocumentManager.getInstance().getDocument(file)
+        } ?: return
+
+        if (!file.isValid || !document.isWritable) return
+
+        WriteCommandAction.runWriteCommandAction(project) {
+            if (isDisposed || project.isDisposed) return@runWriteCommandAction
+            try {
+                updateNoteSettings(document, name, x, y, width, height)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun updateNoteSettings(
+        document: Document,
+        noteName: String,
+        x: Int,
+        y: Int,
+        width: Int,
+        height: Int
+    ) {
+        val text = document.text
+
+        // Regex to find: Note noteName [settings] { ... }
+        // Group 1: Settings block content (optional)
+        val noteRegex = Regex("""Note\s+\b${Regex.escape(noteName)}\b\s*(?:\[(.*?)])?\s*\{""", RegexOption.IGNORE_CASE)
+
+        val match = noteRegex.find(text) ?: return
+
+        val settingsGroup = match.groups[1]
+
+        // Helper to update/append settings string (reused concept from tables)
+        fun updateSettingString(source: String): String {
+            var newSettings = source
+
+            fun replaceOrAppend(key: String, value: Any) {
+                val keyRegex = Regex("""(\b$key\s*:\s*)([-\d.]+)""", RegexOption.IGNORE_CASE)
+                newSettings = if (keyRegex.containsMatchIn(newSettings)) {
+                    newSettings.replace(keyRegex, "$1$value")
+                } else {
+                    val trimmed = newSettings.trimEnd()
+                    val separator = if (trimmed.isNotEmpty() && !trimmed.endsWith(",")) ", " else ""
+                    val prefix = if (trimmed.isEmpty()) "" else separator
+                    "$trimmed$prefix$key: $value"
+                }
+            }
+
+            replaceOrAppend("x", x)
+            replaceOrAppend("y", y)
+            replaceOrAppend("width", width)
+            replaceOrAppend("height", height)
+            return newSettings
+        }
+
+        if (settingsGroup != null) {
+            // Settings block exists, update it
+            val currentContent = settingsGroup.value
+            val newContent = updateSettingString(currentContent)
+            val range = settingsGroup.range
+            document.replaceString(range.first, range.last + 1, newContent)
+        } else {
+            // Settings block missing, insert it before the opening brace
+            // match.value ends with '{'
+            // We want to insert " [x: ..., y: ...] " before that last char
+            val endOfMatch = match.range.last // This is the index of '{'
+            val newBlock = " [${updateSettingString("")}] "
+            document.insertString(endOfMatch, newBlock)
+        }
+    }
 
   override fun setState(state: FileEditorState) {}
   override fun isModified(): Boolean = false

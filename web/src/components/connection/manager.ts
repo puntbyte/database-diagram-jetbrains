@@ -1,14 +1,21 @@
+// web/src/components/connection/manager.ts
+
 import type {DbRelationship, Cardinality} from '../../models/types';
 import type {LineStyle, Rect, EndpointsConfig} from './types';
 import {ConnectionLogic} from './logic';
 import {LineComponent} from './line';
 import {AnchorComponent} from './anchor';
 
+/**
+ * Temporary structure used during the layout calculation phase
+ * to group and sort connections before drawing.
+ */
 interface EndpointInfo {
   rel: DbRelationship;
+  colPairIndex: number; // Which column pair in the relationship (0 for simple)
   isFrom: boolean;
   rect: Rect;
-  otherY: number; // Y center of the target
+  otherY: number; // Y center of the connected target
   label: string;
 }
 
@@ -45,18 +52,23 @@ export class ConnectionManager {
     const rects = new Map<string, Rect>();
 
     // --- 1. PREPARE DATA ---
-    const relConfigs = new Map<DbRelationship, EndpointsConfig>();
+    // We map each relationship to an array of configs (one for each column pair in the relationship)
+    const relConfigs = new Map<DbRelationship, EndpointsConfig[]>();
+
     relationships.forEach(rel => {
-      relConfigs.set(rel, {
-        fromColIndex: 0, fromColTotal: 1, toColIndex: 0, toColTotal: 1,
-        fromLaneIndex: 0, toLaneIndex: 0,
-        fromLabel: null, fromStagger: 0, toLabel: null, toStagger: 0
-      });
+      const count = Math.max(1, Math.min(rel.fromColumns.length, rel.toColumns.length));
+      const configs: EndpointsConfig[] = [];
+      for (let i = 0; i < count; i++) {
+        configs.push({
+          fromColIndex: 0, fromColTotal: 1, toColIndex: 0, toColTotal: 1,
+          fromLaneIndex: 0, toLaneIndex: 0,
+          fromLabel: null, fromStagger: 0, toLabel: null, toStagger: 0
+        });
+      }
+      relConfigs.set(rel, configs);
     });
 
-    const colGroups = new Map<string, EndpointInfo[]>();
-
-    // Helper to get rects
+    // Helper to get rects (DOM read - cached)
     const getRect = (id: string) => {
       if (!rects.has(id)) {
         const el = document.getElementById(id);
@@ -65,30 +77,64 @@ export class ConnectionManager {
       return rects.get(id);
     }
 
+    // Maps to group endpoints for sorting
+    const colGroups = new Map<string, EndpointInfo[]>();
+
+    // Map key: "tableId-side" (e.g. "users-right") -> list of endpoints
+    const tableSideGroups = new Map<string, EndpointInfo[]>();
+
+    // --- LOOP THROUGH RELATIONSHIPS & POPULATE GROUPS ---
     relationships.forEach(rel => {
-      const fromId = `col-${rel.fromTable}-${rel.fromColumn}`;
-      const toId = `col-${rel.toTable}-${rel.toColumn}`;
-      const rFrom = getRect(fromId);
-      const rTo = getRect(toId);
+      // Handle Composite Keys (loop through matched pairs)
+      const count = Math.min(rel.fromColumns.length, rel.toColumns.length);
 
-      if (!rFrom || !rTo) return;
+      for(let i=0; i<count; i++) {
+        const fromColName = rel.fromColumns[i];
+        const toColName = rel.toColumns[i];
 
-      const labelFrom = this.getLabelString(rel.type, true);
-      const labelTo = this.getLabelString(rel.type, false);
+        const fromId = `col-${rel.fromTable}-${fromColName}`;
+        const toId = `col-${rel.toTable}-${toColName}`;
 
-      if (!colGroups.has(fromId)) colGroups.set(fromId, []);
-      colGroups.get(fromId)!.push({
-        rel, isFrom: true, rect: rFrom, otherY: rTo.y + rTo.height / 2, label: labelFrom
-      });
+        const rFrom = getRect(fromId);
+        const rTo = getRect(toId);
 
-      if (!colGroups.has(toId)) colGroups.set(toId, []);
-      colGroups.get(toId)!.push({
-        rel, isFrom: false, rect: rTo, otherY: rFrom.y + rFrom.height / 2, label: labelTo
-      });
+        if (!rFrom || !rTo) continue;
+
+        // Use labels only for the first line of a composite key to avoid clutter
+        const isFirst = (i === 0);
+        const labelFrom = isFirst ? this.getLabelString(rel.type, true) : '';
+        const labelTo = isFirst ? this.getLabelString(rel.type, false) : '';
+
+        // 1. Register for Column Grouping (Vertical Anchor Spacing)
+        if (!colGroups.has(fromId)) colGroups.set(fromId, []);
+        colGroups.get(fromId)!.push({
+          rel, colPairIndex: i, isFrom: true, rect: rFrom, otherY: rTo.y + rTo.height/2, label: labelFrom
+        });
+
+        if (!colGroups.has(toId)) colGroups.set(toId, []);
+        colGroups.get(toId)!.push({
+          rel, colPairIndex: i, isFrom: false, rect: rTo, otherY: rFrom.y + rFrom.height/2, label: labelTo
+        });
+
+        // 2. Register for Table Side Grouping (Horizontal Lane Spacing)
+        const fromSide = (rFrom.x < rTo.x) ? 'right' : 'left';
+        const toSide = (rTo.x < rFrom.x) ? 'right' : 'left';
+
+        const kFrom = `${rel.fromTable}-${fromSide}`;
+        const kTo = `${rel.toTable}-${toSide}`;
+
+        const infoFrom: EndpointInfo = { rel, colPairIndex: i, isFrom: true, rect: rFrom, otherY: rTo.y + rTo.height/2, label: '' };
+        const infoTo: EndpointInfo = { rel, colPairIndex: i, isFrom: false, rect: rTo, otherY: rFrom.y + rFrom.height/2, label: '' };
+
+        if (!tableSideGroups.has(kFrom)) tableSideGroups.set(kFrom, []);
+        tableSideGroups.get(kFrom)!.push(infoFrom);
+
+        if (!tableSideGroups.has(kTo)) tableSideGroups.set(kTo, []);
+        tableSideGroups.get(kTo)!.push(infoTo);
+      }
     });
 
-    // --- 2. COLUMN GROUPING (Vertical Anchors & Labels) ---
-    // Sort connections sharing the exact same column
+    // --- 2. PROCESS COLUMN GROUPS (Vertical Anchors & Labels) ---
     for (const list of colGroups.values()) {
       // Sort by target Y to untangle crossing lines immediately leaving the anchor
       list.sort((a, b) => a.otherY - b.otherY);
@@ -98,17 +144,31 @@ export class ConnectionManager {
       let staggerCounter = 0;
 
       list.forEach((ep, index) => {
-        const config = relConfigs.get(ep.rel);
+        const config = relConfigs.get(ep.rel)?.[ep.colPairIndex];
         if (!config) return;
 
-        // Label Staggering
+        // Label Staggering: Only increment offset if we see a NEW label type overlapping here
         let labelStr: string | null = null;
         let labelStagger = 0;
 
-        if (!seenLabels.has(ep.label)) {
-          seenLabels.add(ep.label);
-          labelStr = ep.label;
-          labelStagger = staggerCounter++;
+        // If the line has a label (isFirst), check overlap
+        if (ep.label) {
+          if (!seenLabels.has(ep.label)) {
+            seenLabels.add(ep.label);
+            labelStr = ep.label;
+            labelStagger = staggerCounter++;
+          } else {
+            // Same label type (e.g. multiple 1:n connections), just reuse the first one visually?
+            // Or stack them? Requirement says "overlapping is not good... keep only one relation indicator"
+            // So we effectively hide subsequent identical labels by keeping labelStr null here,
+            // OR we just let them overlap perfectly (which looks like one).
+            // Let's explicitly set it to the labelStr so it renders, but it will be at the same stagger index 0.
+            labelStr = ep.label;
+            labelStagger = 0; // Or find the existing stagger for this label?
+
+            // Correct logic based on requirement "if similar relation ... keep only one indicator"
+            // If we already saw '1', we don't need to stagger a new '1' out. They can overlap.
+          }
         }
 
         if (ep.isFrom) {
@@ -125,80 +185,34 @@ export class ConnectionManager {
       });
     }
 
-    // --- 3. TABLE-SIDE GROUPING (Horizontal Lanes) ---
-    // This logic prevents crossing when turning.
-
-    // Map key: "tableId-side" (e.g. "table1-right", "table2-left")
-    const tableSideGroups = new Map<string, EndpointInfo[]>();
-
-    relationships.forEach(rel => {
-      const fromId = `col-${rel.fromTable}-${rel.fromColumn}`;
-      const toId = `col-${rel.toTable}-${rel.toColumn}`;
-      const rFrom = rects.get(fromId);
-      const rTo = rects.get(toId);
-      if (!rFrom || !rTo) return;
-
-      // Determine side (Right or Left) logic
-      // Simplistic check: If To is to the right of From, leave From-Right.
-      const fromSide = (rFrom.x < rTo.x) ? 'right' : 'left';
-      const toSide = (rTo.x < rFrom.x) ? 'right' : 'left'; // If From is right of To, To enters Left? No.
-      // Actually: if rFrom.x < rTo.x: From leaves Right, To enters Left.
-
-      const kFrom = `${rel.fromTable}-${fromSide}`;
-      const kTo = `${rel.toTable}-${toSide}`;
-
-      // Re-fetch info to ensure we have it
-      // Note: we just reconstruct info here, lightweight
-      const infoFrom: EndpointInfo = {
-        rel,
-        isFrom: true,
-        rect: rFrom,
-        otherY: rTo.y + rTo.height / 2,
-        label: ''
-      };
-      const infoTo: EndpointInfo = {
-        rel,
-        isFrom: false,
-        rect: rTo,
-        otherY: rFrom.y + rFrom.height / 2,
-        label: ''
-      };
-
-      if (!tableSideGroups.has(kFrom)) tableSideGroups.set(kFrom, []);
-      tableSideGroups.get(kFrom)!.push(infoFrom);
-
-      if (!tableSideGroups.has(kTo)) tableSideGroups.set(kTo, []);
-      tableSideGroups.get(kTo)!.push(infoTo);
-    });
-
+    // --- 3. PROCESS TABLE-SIDE GROUPS (Horizontal Lanes) ---
     for (const [key, list] of tableSideGroups.entries()) {
       if (list.length <= 1) continue; // No lane conflict
 
-      // 1. Determine general direction (Up or Down)
-      // Calculate average Y of this side's anchors
+      // A. Determine general direction (Up or Down)
       const avgSourceY = list.reduce((sum, ep) => sum + ep.rect.y, 0) / list.length;
       const avgTargetY = list.reduce((sum, ep) => sum + ep.otherY, 0) / list.length;
-
       const goingDown = avgTargetY > avgSourceY;
 
-      // 2. Sort by Source Y position (Top to Bottom)
-      // Secondary sort by Target Y to resolve same-row conflicts
+      // B. Sort by Source Y position (Top to Bottom)
       list.sort((a, b) => {
+        // Primary sort: Physical Y position on the table
         if (Math.abs(a.rect.y - b.rect.y) > 1) return a.rect.y - b.rect.y;
+        // Secondary sort: Target Y (to keep bundles straight)
         return a.otherY - b.otherY;
       });
 
-      // 3. Assign Lanes
-      // Rule: The connection "closest" to the target vertical center gets the smallest offset (inner track).
-      // The connection "furthest" gets the largest offset (outer track).
+      // C. Assign Lanes
+      // Rule: The connection "closest" to the vertical center of travel gets the inner track.
+      // Going Down -> Bottom-most source is inner track (shortest path). Top-most is outer.
+      // Going Up -> Top-most source is inner track. Bottom-most is outer.
 
       list.forEach((ep, i) => {
-        const config = relConfigs.get(ep.rel);
+        const config = relConfigs.get(ep.rel)?.[ep.colPairIndex];
         if (!config) return;
 
-        // If Going Down: Top Row (index 0) is furthest away. Needs Outer Lane (Big Index).
-        // If Going Up: Top Row (index 0) is closest. Needs Inner Lane (Small Index).
-
+        // laneIndex 0 = Base Offset (Closest to table)
+        // laneIndex N = Further out
         const laneIndex = goingDown ? (list.length - 1 - i) : i;
 
         if (ep.isFrom) config.fromLaneIndex = laneIndex;
@@ -208,34 +222,53 @@ export class ConnectionManager {
 
     // --- 4. DRAW ---
     relationships.forEach(rel => {
-      const fromId = `col-${rel.fromTable}-${rel.fromColumn}`;
-      const toId = `col-${rel.toTable}-${rel.toColumn}`;
-      const fromRect = rects.get(fromId);
-      const toRect = rects.get(toId);
-      const config = relConfigs.get(rel);
+      const count = Math.min(rel.fromColumns.length, rel.toColumns.length);
 
-      if (fromRect && toRect && config) {
-        const pathData = ConnectionLogic.calculatePath(
-            fromRect, toRect, fromId, toId,
-            `table-${rel.fromTable}`, `table-${rel.toTable}`,
-            this.currentLineStyle, config
-        );
+      for(let i=0; i<count; i++) {
+        const fromId = `col-${rel.fromTable}-${rel.fromColumns[i]}`;
+        const toId = `col-${rel.toTable}-${rel.toColumns[i]}`;
 
-        const lineGroup = LineComponent.createGroup(pathData);
-        this.svgLayer.appendChild(lineGroup);
+        const fromRect = rects.get(fromId);
+        const toRect = rects.get(toId);
+        const config = relConfigs.get(rel)?.[i];
 
-        const startAnchor = AnchorComponent.create(pathData.start);
-        startAnchor.dataset.anchorId = fromId;
-        this.svgLayer.appendChild(startAnchor);
+        if (fromRect && toRect && config) {
 
-        const endAnchor = AnchorComponent.create(pathData.end);
-        endAnchor.dataset.anchorId = toId;
-        this.svgLayer.appendChild(endAnchor);
+          // Calculate Path
+          const pathData = ConnectionLogic.calculatePath(
+              fromRect, toRect, fromId, toId,
+              `table-${rel.fromTable}`, `table-${rel.toTable}`,
+              this.currentLineStyle, config
+          );
+
+          // Create Elements
+          const lineGroup = LineComponent.createGroup(pathData);
+
+          // Apply Settings Color if present
+          if (rel.settings && rel.settings['color']) {
+            const color = rel.settings['color'];
+            const base = lineGroup.querySelector('.relation-line-base') as SVGPathElement;
+            const flow = lineGroup.querySelector('.relation-line-flow') as SVGPathElement;
+            if(base) base.style.stroke = color;
+            if(flow) flow.style.stroke = color;
+          }
+
+          // Append to SVG
+          this.svgLayer.appendChild(lineGroup);
+
+          // Create Anchors
+          const startAnchor = AnchorComponent.create(pathData.start);
+          startAnchor.dataset.anchorId = fromId;
+          this.svgLayer.appendChild(startAnchor);
+
+          const endAnchor = AnchorComponent.create(pathData.end);
+          endAnchor.dataset.anchorId = toId;
+          this.svgLayer.appendChild(endAnchor);
+        }
       }
     });
   }
 
-  // ... (Rest of class methods: getLabelString, getRelativeRect, interaction handlers)
   private getLabelString(type: Cardinality, isFrom: boolean): string {
     const parts = type.split(':');
     return isFrom ? parts[0] : parts[1];
@@ -252,6 +285,8 @@ export class ConnectionManager {
     };
   }
 
+  // --- INTERACTIONS ---
+
   private setupInteractions() {
     this.container.addEventListener('mouseover', (e) => this.handleHover(e, true));
     this.container.addEventListener('mouseout', (e) => this.handleHover(e, false));
@@ -263,16 +298,22 @@ export class ConnectionManager {
       return;
     }
     const target = e.target as HTMLElement;
+
+    // 1. Hovering a Line Group
     const lineGroup = target.closest('.connection-group') as HTMLElement;
     if (lineGroup) {
       this.activateConnection(lineGroup);
       return;
     }
+
+    // 2. Hovering a Table Column
     const column = target.closest('.db-row');
     if (column && column.id) {
       this.activateColumn(column.id);
       return;
     }
+
+    // 3. Hovering a Table Header (Active Table)
     const table = target.closest('.db-table');
     if (table && table.id) {
       this.activateTable(table.id);
@@ -289,6 +330,7 @@ export class ConnectionManager {
     lineGroup.classList.add('highlighted');
     const fromId = lineGroup.dataset.from;
     const toId = lineGroup.dataset.to;
+
     if (fromId) this.setHighlight(fromId);
     if (toId) this.setHighlight(toId);
     this.highlightAnchorsForLine(fromId, toId);
@@ -296,6 +338,8 @@ export class ConnectionManager {
 
   private activateColumn(colId: string) {
     this.setHighlight(colId);
+
+    // Find all lines connected to this column
     const lines = this.svgLayer.querySelectorAll(`[data-from="${colId}"], [data-to="${colId}"]`);
     lines.forEach(line => {
       line.classList.add('highlighted');
@@ -308,6 +352,8 @@ export class ConnectionManager {
 
   private activateTable(tableId: string) {
     this.setHighlight(tableId);
+
+    // Find all lines related to this table
     const lines = this.svgLayer.querySelectorAll(`[data-from-table="${tableId}"], [data-to-table="${tableId}"]`);
     lines.forEach(line => {
       line.classList.add('highlighted');
