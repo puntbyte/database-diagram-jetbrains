@@ -28,26 +28,17 @@ class SchemaSplitEditorProvider : AsyncFileEditorProvider, DumbAware {
   ): AsyncFileEditorProvider.Builder {
     return object : AsyncFileEditorProvider.Builder() {
       override fun build(): FileEditor {
-        // 1. Create Editors
         val textEditor = TextEditorProvider.getInstance().createEditor(project, file) as TextEditor
         val previewEditor = SchemaPreviewFileEditor(project, file)
-
-        // 2. Setup Debouncer (Alarm) attached to the previewEditor's lifecycle
         val updateAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, previewEditor)
-
-        // 3. Document Listener
         val document = textEditor.editor.document
 
-        // CRITICAL FIX: Pass 'previewEditor' as the second argument (parentDisposable).
-        // IntelliJ will automatically remove this listener when previewEditor is disposed.
+        // Important: Bind listener to previewEditor lifecycle
         document.addDocumentListener(object : DocumentListener {
           override fun documentChanged(event: DocumentEvent) {
-            // Extra defensive check
             if (updateAlarm.isDisposed) return
-
             updateAlarm.cancelAllRequests()
             updateAlarm.addRequest({
-              // Ensure we don't try to render if the editor died during the delay
               if (!previewEditor.isDisposed) {
                 previewEditor.render(document.text)
               }
@@ -55,7 +46,6 @@ class SchemaSplitEditorProvider : AsyncFileEditorProvider, DumbAware {
           }
         }, previewEditor)
 
-        // 4. Initial Render
         previewEditor.render(document.text)
 
         return TextEditorWithPreview(

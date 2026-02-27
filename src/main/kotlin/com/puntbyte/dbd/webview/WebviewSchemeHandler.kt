@@ -16,15 +16,8 @@ class WebviewSchemeHandler : CefResourceHandler {
   private var mimeType: String = "text/html"
 
   override fun processRequest(request: CefRequest, callback: CefCallback): Boolean {
-    // 1. Log what the browser is asking for
-    logger.info("WebView Requesting: ${request.url}")
-
     val path = URI(request.url).path
-    // Handle root path
     val actualPath = if (path == "/" || path.isEmpty()) "/index.html" else path
-
-    // 2. Map to your resources folder structure
-    // IMPORTANT: Ensure your files are in src/main/resources/webview/
     val resourcePath = "/webview$actualPath"
 
     mimeType = when {
@@ -34,15 +27,12 @@ class WebviewSchemeHandler : CefResourceHandler {
       else -> "text/plain"
     }
 
-    // 3. Try to load
     inputStream = javaClass.getResourceAsStream(resourcePath)
 
     if (inputStream != null) {
-      logger.info("Found resource: $resourcePath")
       callback.Continue()
       return true
     } else {
-      logger.warn("Resource NOT FOUND: $resourcePath")
       return false
     }
   }

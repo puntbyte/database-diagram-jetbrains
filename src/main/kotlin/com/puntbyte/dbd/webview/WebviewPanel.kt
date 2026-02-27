@@ -22,13 +22,11 @@ class WebviewPanel(
   private val file: VirtualFile,
   private val listener: WebviewListener
 ) : Disposable {
-  // Define the Listener Interface here
+
   interface WebviewListener {
-      fun onWebviewReady()
-      fun onTablePositionUpdated(tableName: String, x: Int, y: Int, width: Int?)
-      fun onProjectSettingsUpdated(settings: Map<String, String?>)
-      // NEW METHOD
-      fun onNotePositionUpdated(name: String, x: Int, y: Int, width: Int, height: Int)
+    fun onWebviewReady()
+    fun onTablePositionUpdated(tableName: String, x: Int, y: Int, width: Int?)
+    fun onNotePositionUpdated(name: String, x: Int, y: Int, width: Int, height: Int)
   }
 
   companion object {
@@ -50,7 +48,6 @@ class WebviewPanel(
       return
     }
 
-    // Create Browser
     val browser = JBCefBrowser.createBuilder()
       .setEnableOpenDevToolsMenuItem(true)
       .build()
@@ -58,16 +55,11 @@ class WebviewPanel(
     jbCefBrowser = browser
     component.add(browser.component, BorderLayout.CENTER)
 
-    // Add Message Router
     val router = CefMessageRouter.create()
     router.addHandler(object : CefMessageRouterHandlerAdapter() {
       override fun onQuery(
-        browser: CefBrowser?,
-        frame: CefFrame?,
-        queryId: Long,
-        request: String?,
-        persistent: Boolean,
-        callback: CefQueryCallback?
+        browser: CefBrowser?, frame: CefFrame?, queryId: Long, request: String?,
+        persistent: Boolean, callback: CefQueryCallback?
       ): Boolean {
         handleClientQuery(request)
         return true
@@ -75,9 +67,7 @@ class WebviewPanel(
     }, true)
     browser.jbCefClient.cefClient.addMessageRouter(router)
 
-    // Load Content
     loadContent(browser)
-
     Disposer.register(parentDisposable, browser)
     Disposer.register(parentDisposable, this)
   }
@@ -93,56 +83,34 @@ class WebviewPanel(
     browser.loadURL("data:text/html;charset=utf-8;base64,$encoded")
   }
 
-    private fun handleClientQuery(request: String?) {
-        if (request == null) return
-        // logger.info("Webview raw: $request")
-
-        try {
-            val message = mapper.readValue(request, WebviewBridge.Client::class.java)
-
-            when (message) {
-                is WebviewBridge.Client.Ready -> listener.onWebviewReady()
-                is WebviewBridge.Client.Log -> logger.info("Webview: ${message.message}")
-
-                is WebviewBridge.Client.UpdateTablePos -> {
-                    listener.onTablePositionUpdated(message.tableName, message.x, message.y, message.width)
-                }
-
-                is WebviewBridge.Client.UpdateProjectSettings -> {
-                    val raw = message.settings
-                    val stringMap = raw.mapValues { (_, v) -> v?.toString() }
-                    listener.onProjectSettingsUpdated(stringMap)
-                }
-
-                // NEW HANDLER
-                is WebviewBridge.Client.UpdateNotePos -> {
-                    listener.onNotePositionUpdated(
-                        message.name,
-                        message.x,
-                        message.y,
-                        message.width,
-                        message.height
-                    )
-                }
-            }
-        } catch (e: Exception) {
-            logger.warn("Failed to parse webview message: ${e.message}")
-        }
+  private fun handleClientQuery(request: String?) {
+    if (request == null) return
+    try {
+      val message = mapper.readValue(request, WebviewBridge.Client::class.java)
+      when (message) {
+        is WebviewBridge.Client.Ready -> listener.onWebviewReady()
+        is WebviewBridge.Client.Log -> logger.info("Webview: ${message.message}")
+        is WebviewBridge.Client.UpdateTablePos -> listener.onTablePositionUpdated(message.tableName, message.x, message.y, message.width)
+        is WebviewBridge.Client.UpdateNotePos -> listener.onNotePositionUpdated(message.name, message.x, message.y, message.width, message.height)
+      }
+    } catch (e: Exception) {
+      logger.warn("Failed to parse webview message: ${e.message}")
     }
+  }
 
-  fun updateSchema(format: String, content: String) {
+  // UPDATED: Now accepts settings
+  fun updateSchema(format: String, content: String, settings: WebviewBridge.GlobalSettings? = null) {
     val browser = jbCefBrowser ?: return
     if (browser.cefBrowser == null) return
     try {
-      val payload = WebviewBridge.Server.UpdateContent(format, content)
+      val payload = WebviewBridge.Server.UpdateContent(format, content, settings)
       val json = mapper.writeValueAsString(payload)
       browser.cefBrowser.executeJavaScript(
         "window.postMessage($json, '*')",
         browser.cefBrowser.url,
         0
       )
-    } catch (_: Exception) {
-    }
+    } catch (_: Exception) { }
   }
 
   fun updateTheme(theme: String) {
@@ -156,13 +124,24 @@ class WebviewPanel(
         browser.cefBrowser.url,
         0
       )
-    } catch (_: Exception) {
-    }
+    } catch (_: Exception) { }
+  }
+
+  fun updateGlobalSettings(lineStyle: String, showGrid: Boolean, gridSize: Int) {
+    val browser = jbCefBrowser ?: return
+    if (browser.cefBrowser == null) return
+    try {
+      val payload = WebviewBridge.Server.UpdateGlobalSettings(lineStyle, showGrid, gridSize)
+      val json = mapper.writeValueAsString(payload)
+      browser.cefBrowser.executeJavaScript(
+        "window.postMessage($json, '*')",
+        browser.cefBrowser.url,
+        0
+      )
+    } catch (_: Exception) { }
   }
 
   override fun dispose() {
     jbCefBrowser = null
   }
-
-  // REMOVED: conflicting `fun getComponent()`
 }
