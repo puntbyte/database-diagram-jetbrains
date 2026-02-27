@@ -1,19 +1,22 @@
+/* web/src/styles/note.css */
+
 .sticky-note {
   position: absolute;
   min-height: 100px;
   padding: 12px;
-  border-radius: 2px; /* Post-it style */
+  border-radius: 2px;
   box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-  font-family: 'Comic Sans MS', 'Marker Felt', sans-serif; /* Note-like font */
+  font-family: 'Comic Sans MS', 'Marker Felt', sans-serif;
   font-size: 13px;
   line-height: 1.5;
-  z-index: 5; /* Below tables (tables are z-index 10 usually) */
+  z-index: 5;
   display: flex;
   flex-direction: column;
   cursor: grab;
   transition: box-shadow 0.2s, transform 0.1s;
 
-  /* Paper texture effect (optional) */
+  /* Box sizing is handled globally now, but being explicit doesn't hurt */
+  box-sizing: border-box;
   background-image: linear-gradient(rgba(255,255,255,0.4), rgba(255,255,255,0));
 }
 
@@ -25,27 +28,30 @@
 }
 
 .note-content {
-  white-space: pre-wrap; /* Preserve line breaks */
+  white-space: pre-wrap;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  pointer-events: none; /* Let clicks pass to container for dragging */
+  pointer-events: none;
 }
 
-/* Resize Handle logic re-used from tables, but styled for notes */
+/* OVERRIDE the Table Resize Handle Styles */
 .sticky-note .resize-handle {
   position: absolute;
-  /* CHANGED: Position at bottom right */
+  /* Correct Position: Bottom Right */
   bottom: 0;
   right: 0;
-  top: auto;
+  top: auto; /* Override table css top:0 */
 
   width: 15px;
   height: 15px;
-  cursor: nwse-resize; /* Correct diagonal cursor */
+  cursor: nwse-resize;
 
-  /* Visual triangle */
+  /* Remove Table Border style */
+  border: none;
+  border-radius: 0 0 2px 0;
+
+  /* Visual Triangle */
   background: linear-gradient(135deg, transparent 50%, rgba(0,0,0,0.1) 50%);
-  border-bottom-right-radius: 2px;
   z-index: 10;
 }

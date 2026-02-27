@@ -1,13 +1,20 @@
+/* web/src/styles/main.css */
+
 @import './icons.css';
-/* <--- Add this line */
 @import './table.css';
 @import './column.css';
 @import './connection.css';
 @import './note.css';
-/* Import Note CSS */
-@import './hud.css';
+@import 'hud.css';
+
+/* --- GLOBAL RESET FOR CORRECT SIZING --- */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
 
 :root {
+  /* ... existing vars ... */
+  /* Ensure these match your previous config */
   --bg-color: #f4f4f4;
   --table-bg: #ffffff;
   --table-border: #d1d5db;
@@ -17,13 +24,12 @@
   --text-primary: #1f2937;
   --text-secondary: #6b7280;
   --line-color: #9ca3af;
-
-  /* UPDATED: Lighter Axis Lines */
   --grid-line: rgba(0, 0, 0, 0.04);
-  --axis-line: rgba(0, 0, 0, 0.08); /* Reduced from 0.2 */
+  --axis-line: rgba(0, 0, 0, 0.08);
 }
 
 body.dark {
+  /* ... existing dark vars ... */
   --bg-color: #1e1e1e;
   --table-bg: #2b2d30;
   --table-border: #4e5256;
@@ -33,10 +39,8 @@ body.dark {
   --text-primary: #d1d5db;
   --text-secondary: #9ca3af;
   --line-color: #6b7280;
-
-  /* UPDATED: Lighter Axis Lines (Dark Mode) */
   --grid-line: rgba(255, 255, 255, 0.04);
-  --axis-line: rgba(255, 255, 255, 0.08); /* Reduced from 0.2 */
+  --axis-line: rgba(255, 255, 255, 0.08);
 }
 
 body {
@@ -56,26 +60,29 @@ body {
   --zoom: 1;
   --pan-x: 0px;
   --pan-y: 0px;
-  --grid-size: 20px; /* Default Grid Size */
+  --grid-size: 20px;
 }
 
 #app.grid-visible {
-  background-image: linear-gradient(to right, var(--axis-line) 2px, transparent 2px),
-  linear-gradient(to bottom, var(--axis-line) 2px, transparent 2px),
-  linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
-  linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-image:
+      linear-gradient(to right, var(--axis-line) 2px, transparent 2px),
+      linear-gradient(to bottom, var(--axis-line) 2px, transparent 2px),
+      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
 
   background-repeat: no-repeat, no-repeat, repeat, repeat;
 
-  background-position: var(--pan-x) 0,
-  0 var(--pan-y),
-  var(--pan-x) var(--pan-y),
-  var(--pan-x) var(--pan-y);
+  background-position:
+      var(--pan-x) 0,
+      0 var(--pan-y),
+      var(--pan-x) var(--pan-y),
+      var(--pan-x) var(--pan-y);
 
-  background-size: 2px 100%,
-  100% 2px,
-  calc(var(--grid-size) * var(--zoom)) calc(var(--grid-size) * var(--zoom)),
-  calc(var(--grid-size) * var(--zoom)) calc(var(--grid-size) * var(--zoom));
+  background-size:
+      2px 100%,
+      100% 2px,
+      calc(var(--grid-size) * var(--zoom)) calc(var(--grid-size) * var(--zoom)),
+      calc(var(--grid-size) * var(--zoom)) calc(var(--grid-size) * var(--zoom));
 }
 
 .schema-wrapper {

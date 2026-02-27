@@ -1,5 +1,3 @@
-import org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask
-
 plugins {
   id("java")
   id("org.jetbrains.kotlin.jvm") version "2.1.20"
@@ -18,6 +16,9 @@ repositories {
 }
 
 val localIdePath = "C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.3.3"
+val localDbmlPluginPath =
+  "E:\\Projects\\Gradle\\database-markup-language-jetbrains\\build\\distributions\\" +
+      "database-markup-language-jetbrains-1.0-SNAPSHOT.zip"
 
 // Read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html
 dependencies {
@@ -26,6 +27,9 @@ dependencies {
 
     // Use your local IDE installation instead of downloading one
     local(localIdePath)
+
+    // 2. Your local DBML Plugin ZIP
+    localPlugin(file(localDbmlPluginPath))
 
     // keep the testFramework declaration here if you need it
     testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
