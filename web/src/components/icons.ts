@@ -10,13 +10,11 @@ import Grid from '../assets/icons/grid.svg?raw';
 import ChevronUp from '../assets/icons/chevron-up.svg?raw';
 
 export const Icons = {
-    // Existing Hardcoded Icons
-    Key,
-    Table,
-    // New Imported Assets
-    ZoomIn,
-    ZoomOut,
-    Center,
-    Grid,
-    ChevronUp
+  Key,
+  Table,
+  ZoomIn,
+  ZoomOut,
+  Center,
+  Grid,
+  ChevronUp
 };

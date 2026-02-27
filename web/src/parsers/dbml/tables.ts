@@ -1,3 +1,5 @@
+// web/src/parsers/dbml/tables.ts
+
 import type { DbTable, DbRelationship, DbField, IndexDef } from '../../models/types';
 import { parseSettingsString, sanitizeId, extractDocComments } from './utils';
 import { parseIndexBlock } from './indexes';

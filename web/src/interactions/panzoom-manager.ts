@@ -1,4 +1,6 @@
-import panzoom, { type PanZoom } from 'panzoom';
+// web/src/interactions/panzoom-manager.ts
+
+import panzoom, {type PanZoom} from 'panzoom';
 
 export type OnZoomCallback = (scale: number) => void;
 export type OnTransformCallback = (scale: number, x: number, y: number) => void;
@@ -9,19 +11,53 @@ export class PanZoomManager {
   private currentX = 0;
   private currentY = 0;
 
+  // Define limits here to reuse them
+  private readonly minZoom = 0.2;
+  private readonly maxZoom = 3;
+
   constructor(wrapper: HTMLElement, onZoom: OnZoomCallback, onTransform?: OnTransformCallback) {
     this.pz = panzoom(wrapper, {
-      maxZoom: 3,
-      minZoom: 0.2,
+      maxZoom: this.maxZoom,
+      minZoom: this.minZoom,
       bounds: false,
+
       beforeMouseDown: (e: MouseEvent | TouchEvent) => {
-        // Prevent panning when clicking on a table to drag it
         const target = e.target as HTMLElement;
         return target.closest('.db-table') !== null;
+      },
+
+      // Intercept Wheel for Fine-Tuned Zooming
+      beforeWheel: (e: WheelEvent) => {
+        if (!e.shiftKey) return false;
+
+        // Choose the dominant axis (handles shift-converted horizontal scrolling)
+        const useX = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+        let delta = useX ? e.deltaX : e.deltaY;
+
+        // If we're using the horizontal axis (shift-mapped), invert it so direction
+        // matches the vertical wheel behavior (so "wheel up" zooms in).
+        if (useX) delta = -delta;
+
+        // No movement -> nothing to do
+        if (delta === 0) {
+          // prevent default so the page doesn't scroll horizontally
+          e.preventDefault();
+          return true;
+        }
+
+        const isZoomIn = delta < 0; // negative means wheel up / toward user -> zoom in
+        const factor = 0.05;
+        const multiplier = isZoomIn ? (1 + factor) : (1 - factor);
+
+        let targetScale = this.currentScale * multiplier;
+        targetScale = Math.max(this.minZoom, Math.min(this.maxZoom, targetScale));
+
+        e.preventDefault(); // stop the page from scrolling
+        this.pz.zoomAbs(e.clientX, e.clientY, targetScale);
+        return true;
       }
     });
 
-    // Tracking logic
     const update = (e: any) => {
       const transform = e.getTransform();
       this.currentScale = transform.scale;
@@ -34,11 +70,8 @@ export class PanZoomManager {
 
     this.pz.on('zoom', update);
     this.pz.on('pan', update);
-    this.pz.on('transform', update); // catch manual moves
+    this.pz.on('transform', update);
 
-    // --- INITIAL CENTER TO (0,0) ---
-    // We want the logical point (0,0) of the canvas to be in the center of the screen.
-    // To do this, we translate the wrapper by half the screen width/height.
     this.resetView();
   }
 
@@ -47,16 +80,14 @@ export class PanZoomManager {
   }
 
   public getTransform() {
-    return { scale: this.currentScale, x: this.currentX, y: this.currentY };
+    return {scale: this.currentScale, x: this.currentX, y: this.currentY};
   }
 
-  // Restores state from DBML file
   public setTransform(scale: number, x: number, y: number) {
-    this.pz.zoomAbs(0, 0, 1); // Reset zoom scale first to avoid compounding math
+    this.pz.zoomAbs(0, 0, 1);
     this.pz.moveTo(x, y);
     this.pz.zoomAbs(0, 0, scale);
 
-    // Update internal state immediately
     this.currentScale = scale;
     this.currentX = x;
     this.currentY = y;
@@ -75,17 +106,12 @@ export class PanZoomManager {
   }
 
   public resetView() {
-    // Center the origin (0,0) of the canvas in the viewport
     const cx = window.innerWidth / 2;
     const cy = window.innerHeight / 2;
 
-    // 1. Move (0,0) to center
     this.pz.moveTo(cx, cy);
-
-    // 2. Reset Scale to 1
     this.pz.zoomAbs(0, 0, 1);
 
-    // Update internal tracking
     this.currentX = cx;
     this.currentY = cy;
     this.currentScale = 1;

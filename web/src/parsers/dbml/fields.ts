@@ -1,7 +1,7 @@
 // web/src/parsers/dbml/fields.ts
 
-import type { DbField } from '../../models/types';
-import { parseSettingsString } from './utils';
+import type {DbField} from '../../models/types';
+import {parseSettingsString} from './utils';
 
 export function parseSingleFieldLine(
     name: string,
@@ -124,5 +124,5 @@ export function parseFieldsFromBody(body: string): { fields: DbField[] } {
       pendingDocComments = [];
     }
   }
-  return { fields };
+  return {fields};
 }

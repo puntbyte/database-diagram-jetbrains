@@ -1,7 +1,7 @@
 // web/src/parsers/dbml/relationships.ts
 
 import type { Cardinality, DbRelationship } from '../../models/types';
-import { parseRefPath, parseSettingsString, sanitizeId } from './utils';
+import { parseRefPath, parseSettingsString } from './utils';
 
 export function createRelationship(
     t1: string, c1: string[],
@@ -11,12 +11,6 @@ export function createRelationship(
 ): DbRelationship {
 
   let type: Cardinality = '1:n';
-
-  // Normalize DBML operators to Cardinality
-  // < : one-to-many (T1(1) < T2(n)) -> T1 is 1, T2 is n
-  // > : many-to-one (T1(n) > T2(1)) -> T1 is n, T2 is 1
-  // - : one-to-one
-  // <>: many-to-many
 
   if (op === '<') type = '1:n';
   else if (op === '>') type = 'n:1';

@@ -1,3 +1,5 @@
+// web/src/components/connection/line.ts
+
 import type {ConnectionPathData} from './types';
 
 export class LineComponent {

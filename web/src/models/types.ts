@@ -60,10 +60,7 @@ export interface ProjectSettings {
   zoom?: number;
   panX?: number;
   panY?: number;
-  showGrid?: boolean;
-  gridSize?: number; // New
-  lineStyle?: string;
-  databaseType?: string; // New
+  databaseType?: string;
   note?: string;
   [key: string]: any;
 }

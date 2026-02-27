@@ -1,15 +1,23 @@
+// web/src/core/bridge.ts
+
 export type ServerMessage =
-    | { type: "UPDATE_CONTENT"; format: string; content: string }
-    | { type: "UPDATE_THEME"; theme: "dark" | "light" };
+    | {
+  type: "UPDATE_CONTENT";
+  format: string;
+  content: string;
+  settings?: { lineStyle: string; showGrid: boolean; gridSize: number }
+}
+    | { type: "UPDATE_THEME"; theme: "dark" | "light" }
+    | { type: "UPDATE_GLOBAL_SETTINGS"; lineStyle: string; showGrid: boolean; gridSize: number };
 
 export type ClientMessage =
     | { type: "LOG"; level: string; message: string }
     | { type: "READY" }
     | { type: "UPDATE_TABLE_POS"; tableName: string; x: number; y: number; width?: number }
-    | { type: "UPDATE_NOTE_POS"; name: string; x: number; y: number; width: number; height: number } // <--- NEW
+    | { type: "UPDATE_NOTE_POS"; name: string; x: number; y: number; width: number; height: number }
     | {
-  type: "UPDATE_PROJECT_SETTINGS";
-  settings: { lineStyle?: string; showGrid?: boolean; zoom?: number; panX?: number; panY?: number }
+  type: "SAVE_GLOBAL_SETTINGS";
+  settings: { lineStyle?: string; showGrid?: boolean; gridSize?: number }
 };
 
 declare global {

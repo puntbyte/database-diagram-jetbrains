@@ -1,3 +1,5 @@
+// web/src/parsers/dbml/notes.ts
+
 import type { DbNote } from '../../models/types';
 import { parseSettingsString, sanitizeId } from './utils';
 

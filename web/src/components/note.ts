@@ -1,3 +1,5 @@
+// web/src/components/note.ts
+
 import type { DbNote } from '../models/types';
 
 export class NoteComponent {
