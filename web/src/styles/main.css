@@ -1,53 +1,24 @@
 /* web/src/styles/main.css */
 
-@import './icons.css';
-@import './table.css';
-@import './column.css';
-@import './connection.css';
-@import './note.css';
-@import 'hud.css';
+@import 'ui/icons.css';
+@import 'widgets/table.css';
+@import 'widgets/field.css';
+@import 'widgets/relationship.css';
+@import 'widgets/note.css';
+@import 'ui/hud.css';
+@import 'ui/toolbar.css';
+@import 'theme.css';
+@import 'viewport.css';
 
-/* --- GLOBAL RESET FOR CORRECT SIZING --- */
 *, *::before, *::after {
   box-sizing: border-box;
-}
-
-:root {
-  /* ... existing vars ... */
-  /* Ensure these match your previous config */
-  --bg-color: #f4f4f4;
-  --table-bg: #ffffff;
-  --table-border: #d1d5db;
-  --header-bg: #3b82f6;
-  --header-rgb: 59, 130, 246;
-  --header-text: #ffffff;
-  --text-primary: #1f2937;
-  --text-secondary: #6b7280;
-  --line-color: #9ca3af;
-  --grid-line: rgba(0, 0, 0, 0.04);
-  --axis-line: rgba(0, 0, 0, 0.08);
-}
-
-body.dark {
-  /* ... existing dark vars ... */
-  --bg-color: #1e1e1e;
-  --table-bg: #2b2d30;
-  --table-border: #4e5256;
-  --header-bg: #3574f0;
-  --header-rgb: 53, 116, 240;
-  --header-text: #ffffff;
-  --text-primary: #d1d5db;
-  --text-secondary: #9ca3af;
-  --line-color: #6b7280;
-  --grid-line: rgba(255, 255, 255, 0.04);
-  --axis-line: rgba(255, 255, 255, 0.08);
 }
 
 body {
   margin: 0;
   background: var(--bg-color);
   color: var(--text-primary);
-  font-family: sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   overflow: hidden;
 }
 
@@ -56,38 +27,8 @@ body {
   height: 100vh;
   overflow: hidden;
   position: relative;
-
   --zoom: 1;
   --pan-x: 0px;
   --pan-y: 0px;
   --grid-size: 20px;
-}
-
-#app.grid-visible {
-  background-image:
-      linear-gradient(to right, var(--axis-line) 2px, transparent 2px),
-      linear-gradient(to bottom, var(--axis-line) 2px, transparent 2px),
-      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
-      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
-
-  background-repeat: no-repeat, no-repeat, repeat, repeat;
-
-  background-position:
-      var(--pan-x) 0,
-      0 var(--pan-y),
-      var(--pan-x) var(--pan-y),
-      var(--pan-x) var(--pan-y);
-
-  background-size:
-      2px 100%,
-      100% 2px,
-      calc(var(--grid-size) * var(--zoom)) calc(var(--grid-size) * var(--zoom)),
-      calc(var(--grid-size) * var(--zoom)) calc(var(--grid-size) * var(--zoom));
-}
-
-.schema-wrapper {
-  width: 100%;
-  height: 100%;
-  transform-origin: 0 0;
-  position: relative;
 }

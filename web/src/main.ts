@@ -1,72 +1,102 @@
 // web/src/main.ts
 
-import { Bridge, type ServerMessage } from "./core/bridge";
-import { SchemaRenderer } from "./core/renderer";
-import "./styles/main.css";
+import {Bridge} from './core/communication/bridge.ts';
+import type {ServerMessage, ViewSettings} from './core/communication/protocol.ts';
+import './styles/main.css';
+import {DiagramController} from "./core/diagram/diagram-controller.ts";
 
-// Store globals locally. Default to sensible values,
-// but backend will overwrite this immediately on READY.
-let globalDefaults = {
-  lineStyle: 'Curve',
-  showGrid: true,
-  gridSize: 20
-};
+class DiagramApplication {
+  private bridge: Bridge;
+  private controller: DiagramController;
+  private viewSettings: ViewSettings = {
+    lineStyle: 'Curve',
+    showGrid: true,
+    gridSize: 20
+  };
 
-const bridge = new Bridge((msg: ServerMessage) => {
-  switch (msg.type) {
-    case "UPDATE_GLOBAL_SETTINGS":
-      globalDefaults = {
-        lineStyle: msg.lineStyle,
-        showGrid: msg.showGrid,
-        gridSize: msg.gridSize
-      };
-      // Apply instantly to current view
-      renderer.updateVisuals(globalDefaults);
-      break;
+  constructor() {
+    this.bridge = new Bridge((msg) => this.handleServerMessage(msg));
+    this.controller = this.initializeController();
+    this.setupEventListeners();
 
-    case "UPDATE_CONTENT":
-      // Pass the current globals to the renderer
-      renderer.render(msg.format, msg.content, globalDefaults);
-      break;
-
-    case "UPDATE_THEME":
-      applyTheme(msg.theme);
-      break;
+    this.bridge.log('Diagram application initialized', 'INFO');
   }
-});
 
-const renderer = new SchemaRenderer(
-    "app",
-    (tableName, x, y, width) => {
-      bridge.send({
-        type: "UPDATE_TABLE_POS",
-        tableName: tableName,
-        x: x,
-        y: y,
-        width: width
-      });
+  private initializeController(): DiagramController {
+    return new DiagramController(
+        'app',
+        (tableName, x, y, width) => this.handleTableMove(tableName, x, y, width),
+        (transform) => this.handleTransformChange(transform)
+    );
+  }
+
+  private handleServerMessage(message: ServerMessage): void {
+    switch (message.type) {
+      case 'UPDATE_GLOBAL_SETTINGS':
+        this.updateSettings(message.settings);
+        break;
+
+      case 'UPDATE_SCHEMA_PAYLOAD':
+        if (message.settings) {
+          this.updateSettings(message.settings);
+        }
+        this.controller.loadSchema(message.payload, this.viewSettings);
+        break;
+
+      case 'UPDATE_THEME':
+        this.applyTheme(message.theme);
+        break;
     }
-);
+  }
 
-const app = document.getElementById('app')!;
+  private updateSettings(settings: ViewSettings): void {
+    this.viewSettings = settings;
+    this.controller.updateVisuals(settings);
+  }
 
-app.addEventListener('note-pos-changed', (e: any) => {
-  const detail = e.detail;
-  if (detail) {
-    bridge.send({
-      type: "UPDATE_NOTE_POS",
-      name: detail.name,
-      x: detail.x,
-      y: detail.y,
-      width: detail.width,
-      height: detail.height
+  private handleTableMove(
+      tableName: string,
+      x: number,
+      y: number,
+      width?: number
+  ): void {
+    this.bridge.send({
+      type: 'UPDATE_TABLE_POS',
+      tableName,
+      x,
+      y,
+      width
     });
   }
-});
 
-function applyTheme(theme: "dark" | "light") {
-  if (theme === "dark") document.body.classList.add("dark");
-  else document.body.classList.remove("dark");
+  private handleTransformChange(transform: { scale: number; x: number; y: number }): void {
+    // Could debounce this for performance if needed
+    // bridge.send({ type: 'UPDATE_VIEWPORT', ...transform });
+  }
+
+  private setupEventListeners(): void {
+    const app = document.getElementById('app');
+    if (!app) return;
+
+    app.addEventListener('note-position-changed', (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail) {
+        this.bridge.send({
+          type: 'UPDATE_NOTE_POS',
+          name: detail.name,
+          x: detail.x,
+          y: detail.y,
+          width: detail.width,
+          height: detail.height
+        });
+      }
+    });
+  }
+
+  private applyTheme(theme: 'dark' | 'light'): void {
+    document.body.classList.toggle('dark', theme === 'dark');
+  }
 }
 
-bridge.log("Webview Initialized & Ready");
+// Bootstrap
+new DiagramApplication();
