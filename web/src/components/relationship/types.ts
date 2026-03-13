@@ -1,4 +1,4 @@
-// web/src/components/connection/types.ts
+// web/src/components/relationship/types.ts
 
 export interface Point {
   x: number;

@@ -1,4 +1,4 @@
-/* web/src/styles/table.css */
+/* web/src/styles/widgets/table.css */
 
 .db-table {
   /* Default fallback */
@@ -165,12 +165,12 @@
    ========================================= */
 
 /* When the wrapper has the class, fade in the overlay */
-.schema-wrapper.semantic-zoom .semantic-overlay {
+.diagram-canvas.semantic-zoom .semantic-overlay {
   opacity: 1;
   pointer-events: auto; /* Allow dragging via the overlay if needed */
   cursor: grab;
 }
 
-.schema-wrapper.semantic-zoom .db-table.dragging .semantic-overlay {
+.diagram-canvas.semantic-zoom .db-table.dragging .semantic-overlay {
   cursor: grabbing;
 }

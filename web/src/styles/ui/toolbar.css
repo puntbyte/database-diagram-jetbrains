@@ -1,0 +1,87 @@
+/* web/src/styles/ui/toolbar.css */
+
+/* =========================================
+   TOOLBAR WIDGET
+   ========================================= */
+
+.toolbar-widget {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+
+  width: auto;
+  height: auto;
+
+  background: var(--table-bg);
+  border: 1px solid var(--table-border);
+  border-radius: 8px;
+  padding: 6px 10px;
+
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+
+  z-index: 1000;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.toolbar-controls-group {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar-control-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  margin: 0;
+  padding: 0;
+
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.toolbar-control-btn:hover {
+  background: rgba(var(--header-rgb), 0.1);
+  border-color: rgba(var(--header-rgb), 0.2);
+  color: var(--header-bg);
+}
+
+.toolbar-control-btn:active {
+  transform: scale(0.95);
+}
+
+.toolbar-icon,
+.toolbar-control-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Dark mode */
+body.dark .toolbar-widget {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .toolbar-widget {
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 16px;
+  }
+}
