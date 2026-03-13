@@ -13,7 +13,7 @@
   <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
        Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-description -->
   <description><![CDATA[
-        An Entry-Relation Diagram previewer and editor.
+        An Entity-Relation Diagram previewer and editor using SQL files and .erd.yaml layouts.
     ]]></description>
 
   <!-- Product and plugin compatibility requirements.
@@ -21,22 +21,21 @@
   <depends>com.intellij.modules.platform</depends>
 
   <!-- Add this line! -->
-  <depends>com.puntbyte.database-markup-language-jetbrains</depends>
+  <!-- Add Dependencies for YAML and SQL Plugins -->
+  <depends>org.jetbrains.plugins.yaml</depends>
+  <depends>com.intellij.modules.sql</depends>
 
   <!-- Extensions defined by the plugin.
        Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
   <extensions defaultExtensionNs="com.intellij">
-    <!-- 1. Register the State Service -->
     <applicationService serviceImplementation="com.puntbyte.dbd.settings.DatabaseDiagramSettings"/>
 
-    <!-- 2. Register the Settings Page under Tools -->
     <applicationConfigurable
         parentId="tools"
         instance="com.puntbyte.dbd.settings.DatabaseDiagramConfigurable"
         id="com.puntbyte.dbd.settings.DatabaseDiagramConfigurable"
         displayName="Database Diagram"/>
 
-    <!-- 3. Register the Split Provider -->
     <fileEditorProvider implementation="com.puntbyte.dbd.editor.SchemaSplitEditorProvider"/>
   </extensions>
 </idea-plugin>
