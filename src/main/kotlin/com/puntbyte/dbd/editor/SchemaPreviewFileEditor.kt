@@ -3,7 +3,6 @@ package com.puntbyte.dbd.editor
 import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.LafManagerListener
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditor
@@ -12,13 +11,12 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiDocumentManager
-import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.ui.JBColor
+import com.puntbyte.dbd.builders.ErdDataBuilder
 import com.puntbyte.dbd.settings.DatabaseDiagramSettings
+import com.puntbyte.dbd.webview.WebviewBridge
 import com.puntbyte.dbd.webview.WebviewPanel
-import com.puntbyte.dbml.psi.DbmlId
-import com.puntbyte.dbml.psi.DbmlStickyNoteDefinition
-import com.puntbyte.dbml.psi.DbmlTableDefinition
+import org.jetbrains.yaml.psi.YAMLFile
 import java.beans.PropertyChangeListener
 import javax.swing.JComponent
 
@@ -31,6 +29,18 @@ class SchemaPreviewFileEditor(
 
   @Volatile
   var isDisposed = false
+    private set
+
+  // FIX: Track whether the current document change was triggered by the webview
+  // saving a layout position (drag/resize).  When true the document listener in
+  // SchemaSplitEditorProvider must skip the re-render so the diagram does not
+  // flash or "settle" back to a slightly-rounded position right after the user
+  // drops a table.
+  //
+  // We use a counter instead of a boolean so that rapid back-to-back saves
+  // (e.g. multi-column composite FK writes) are handled correctly.
+  @Volatile
+  var pendingLayoutSaves = 0
     private set
 
   init {
@@ -56,7 +66,7 @@ class SchemaPreviewFileEditor(
 
   override fun getComponent(): JComponent = webviewPanel.component
   override fun getPreferredFocusedComponent(): JComponent = webviewPanel.component
-  override fun getName(): String = "DBML Preview"
+  override fun getName(): String = "ERD Preview"
 
   private fun pushSettings(settings: DatabaseDiagramSettings.State) {
     webviewPanel.updateGlobalSettings(
@@ -66,10 +76,22 @@ class SchemaPreviewFileEditor(
     )
   }
 
-  fun render(content: String) {
+  fun render(document: Document) {
     if (isDisposed) return
-    pushSettings(DatabaseDiagramSettings.instance.state)
-    webviewPanel.updateSchema(format = file.extension ?: "dbml", content = content)
+
+    val psiManager = PsiDocumentManager.getInstance(project)
+    val psiFile = psiManager.getPsiFile(document) as? YAMLFile ?: return
+
+    val payload = ErdDataBuilder.build(psiFile, project)
+
+    val settings = DatabaseDiagramSettings.instance.state
+    val globalSettings = WebviewBridge.GlobalSettings(
+      lineStyle = settings.defaultLineStyle,
+      showGrid = settings.defaultShowGrid,
+      gridSize = settings.defaultGridSize
+    )
+
+    webviewPanel.updateSchemaPayload(payload, globalSettings)
   }
 
   private fun updateTheme() {
@@ -86,23 +108,39 @@ class SchemaPreviewFileEditor(
   override fun onWebviewReady() {
     if (isDisposed) return
     updateTheme()
-    pushSettings(DatabaseDiagramSettings.instance.state)
     ApplicationManager.getApplication().runReadAction {
       val document = FileDocumentManager.getInstance().getDocument(file)
       if (document != null) {
-        webviewPanel.updateSchema(file.extension ?: "dbml", document.text)
+        render(document)
       }
     }
   }
 
-  // --- SYNCHRONIZATION LOGIC ---
-
   override fun onTablePositionUpdated(tableName: String, x: Int, y: Int, width: Int?) {
-    updateFile { document -> updateTableSettings(document, tableName, x, y, width) }
+    // FIX: Increment the counter BEFORE the write so the document listener
+    // sees it in time, then decrement via invokeLater which runs after the
+    // document change event has been dispatched on the EDT.
+    pendingLayoutSaves++
+    updateFile { document ->
+      val psiFile = PsiDocumentManager.getInstance(project).getPsiFile(document) as? YAMLFile
+        ?: return@updateFile
+      ErdYamlUpdater.updateTablePosition(project, psiFile, tableName, x, y, width)
+    }
+    ApplicationManager.getApplication().invokeLater {
+      if (pendingLayoutSaves > 0) pendingLayoutSaves--
+    }
   }
 
   override fun onNotePositionUpdated(name: String, x: Int, y: Int, width: Int, height: Int) {
-    updateFile { document -> updateNoteSettings(document, name, x, y, width, height) }
+    pendingLayoutSaves++
+    updateFile { document ->
+      val psiFile = PsiDocumentManager.getInstance(project).getPsiFile(document) as? YAMLFile
+        ?: return@updateFile
+      ErdYamlUpdater.updateNotePosition(project, psiFile, name, x, y, width, height)
+    }
+    ApplicationManager.getApplication().invokeLater {
+      if (pendingLayoutSaves > 0) pendingLayoutSaves--
+    }
   }
 
   private fun updateFile(action: (Document) -> Unit) {
@@ -112,149 +150,7 @@ class SchemaPreviewFileEditor(
     } ?: return
     if (!file.isValid || !document.isWritable) return
 
-    WriteCommandAction.runWriteCommandAction(project) {
-      if (isDisposed || project.isDisposed) return@runWriteCommandAction
-      try {
-        action(document)
-      } catch (e: Exception) {
-        e.printStackTrace()
-      }
-    }
-  }
-
-  private fun updateTableSettings(
-    document: Document,
-    tableName: String,
-    x: Int,
-    y: Int,
-    width: Int?
-  ) {
-    // 1. Force sync the PSI tree with the current document text
-    val psiManager = PsiDocumentManager.getInstance(project)
-    psiManager.commitDocument(document)
-    val psiFile = psiManager.getPsiFile(document) ?: return
-
-    // Normalize the target name from the webview (remove quotes and spaces)
-    val normalizedTarget = tableName.replace("\"", "").replace("\\s+".toRegex(), "")
-
-    // 2. Safely find the exact Table using the PSI Tree
-    val tables = PsiTreeUtil.findChildrenOfType(psiFile, DbmlTableDefinition::class.java)
-    val targetTable = tables.find { table ->
-      // Use tableIdentifier to get the FULL 'schema.table' string.
-      // nameIdentifier might only return 'table' if PsiImplUtil isn't fully configured.
-      val rawParsedName = table.tableIdentifier?.text ?: table.nameIdentifier?.text ?: ""
-
-      // Normalize the parsed name
-      val normalizedParsed = rawParsedName.replace("\"", "").replace("\\s+".toRegex(), "")
-
-      normalizedParsed == normalizedTarget
-    } ?: return
-
-    // 3. Target the AST nodes and replace them exactly
-    WriteCommandAction.runWriteCommandAction(project) {
-      val settingBlock = targetTable.settingBlock
-      if (settingBlock != null) {
-        val innerText = settingBlock.text.removeSurrounding("[", "]")
-        val newContent = "[${updateTableSettingString(innerText, x, y, width)}]"
-        document.replaceString(
-          settingBlock.textRange.startOffset,
-          settingBlock.textRange.endOffset,
-          newContent
-        )
-      } else {
-        val tableBlock = targetTable.tableBlock
-        if (tableBlock != null) {
-          val newContent = "[${updateTableSettingString("", x, y, width)}] "
-          document.insertString(tableBlock.textRange.startOffset, newContent)
-        }
-      }
-    }
-  }
-
-  private fun updateNoteSettings(
-    document: Document,
-    noteName: String,
-    x: Int,
-    y: Int,
-    width: Int,
-    height: Int
-  ) {
-    // 1. Force sync the PSI tree with the current document text
-    val psiManager = PsiDocumentManager.getInstance(project)
-    psiManager.commitDocument(document)
-    val psiFile = psiManager.getPsiFile(document) ?: return
-
-    // 2. Find the exact Note using PSI
-    val notes = PsiTreeUtil.findChildrenOfType(psiFile, DbmlStickyNoteDefinition::class.java)
-    val targetNote = notes.find { note ->
-      val idElement = PsiTreeUtil.findChildOfType(note, DbmlId::class.java)
-      idElement?.text?.replace("\"", "") == noteName
-    } ?: return
-
-    // 3. Target the AST nodes and replace them exactly
-    val settingBlock = targetNote.settingBlock
-    if (settingBlock != null) {
-      val innerText = settingBlock.text.removeSurrounding("[", "]")
-      val newContent = "[${updateNoteSettingString(innerText, x, y, width, height)}]"
-      document.replaceString(
-        settingBlock.textRange.startOffset,
-        settingBlock.textRange.endOffset,
-        newContent
-      )
-    } else {
-      val noteBlock = targetNote.noteBlock
-      if (noteBlock != null) {
-        val newContent = "[${updateNoteSettingString("", x, y, width, height)}] "
-        document.insertString(noteBlock.textRange.startOffset, newContent)
-      }
-    }
-  }
-
-  // --- STRING MANIPULATION HELPERS ---
-
-  private fun updateTableSettingString(source: String, x: Int, y: Int, width: Int?): String {
-    var newSettings = source
-    fun replaceOrAppend(key: String, value: Any) {
-      val keyRegex = Regex("""(\b$key\s*:\s*)([-\d.]+)""", RegexOption.IGNORE_CASE)
-      newSettings = if (keyRegex.containsMatchIn(newSettings)) {
-        newSettings.replace(keyRegex, "$1$value")
-      } else {
-        val trimmed = newSettings.trimEnd()
-        val separator = if (trimmed.isNotEmpty() && !trimmed.endsWith(",")) ", " else ""
-        val prefix = if (trimmed.isEmpty()) "" else separator
-        "$trimmed$prefix$key: $value"
-      }
-    }
-    replaceOrAppend("x", x)
-    replaceOrAppend("y", y)
-    if (width != null) replaceOrAppend("width", width)
-    return newSettings
-  }
-
-  private fun updateNoteSettingString(
-    source: String,
-    x: Int,
-    y: Int,
-    width: Int,
-    height: Int
-  ): String {
-    var newSettings = source
-    fun replaceOrAppend(key: String, value: Any) {
-      val keyRegex = Regex("""(\b$key\s*:\s*)([-\d.]+)""", RegexOption.IGNORE_CASE)
-      newSettings = if (keyRegex.containsMatchIn(newSettings)) {
-        newSettings.replace(keyRegex, "$1$value")
-      } else {
-        val trimmed = newSettings.trimEnd()
-        val separator = if (trimmed.isNotEmpty() && !trimmed.endsWith(",")) ", " else ""
-        val prefix = if (trimmed.isEmpty()) "" else separator
-        "$trimmed$prefix$key: $value"
-      }
-    }
-    replaceOrAppend("x", x)
-    replaceOrAppend("y", y)
-    replaceOrAppend("width", width)
-    replaceOrAppend("height", height)
-    return newSettings
+    action(document)
   }
 
   override fun setState(state: FileEditorState) {}

@@ -1,6 +1,6 @@
-/* web/src/styles/connection.css */
+/* web/src/styles/widgets/relationship.css */
 
-.connection-layer {
+.relationship-layer {
   position: absolute;
   top: 0;
   left: 0;
@@ -8,10 +8,14 @@
   height: 100%;
   pointer-events: none;
   z-index: 0;
+
+  /* FIX: overflow:visible is required both here (CSS) AND as an SVG attribute.
+     The CSS rule alone does not override the SVG-level default in all browsers.
+     The SVG attribute is set in canvas-manager.ts. */
   overflow: visible;
 }
 
-.connection-group {
+.relationship-group {
   pointer-events: auto; /* Allow hovering on lines */
   cursor: pointer;
 }
@@ -40,7 +44,6 @@
   stroke-linecap: round;
 
   /* IDLE STATE: Intermittent "Packet" Flow */
-  /* Long gap (150px) between short dashes (15px) */
   stroke-dasharray: 15 150;
   opacity: 0.4;
   animation: flowAnimation 5s linear infinite;
@@ -50,28 +53,26 @@
 
 @keyframes flowAnimation {
   to {
-    /* CHANGED: Positive value reverses direction compared to negative */
     stroke-dashoffset: 165; /* Must match sum of dasharray (15+150) */
   }
 }
 
 @keyframes continuousFlow {
   to {
-    /* CHANGED: Positive value reverses direction */
     stroke-dashoffset: 24;
   }
 }
 
 /* --- HIGHLIGHT STATES (Hovering) --- */
 
-/* When highlighted, the connection gets excited */
-.connection-group.highlighted .relation-line-base {
+/* When highlighted, the relationship gets excited */
+.relationship-group.highlighted .relation-line-base {
   stroke: var(--header-bg);
   stroke-width: 3px;
   opacity: 0.5; /* Fade base slightly so flow pops */
 }
 
-.connection-group.highlighted .relation-line-flow {
+.relationship-group.highlighted .relation-line-flow {
   opacity: 1;
   stroke-width: 3px;
   stroke-dasharray: 12 12; /* Tight dotted line */
@@ -101,7 +102,7 @@
   transition: all 0.3s;
 }
 
-.connection-group.highlighted .label-bg {
+.relationship-group.highlighted .label-bg {
   stroke: var(--header-bg);
   fill: #fff;
 }
@@ -115,6 +116,6 @@
   pointer-events: none;
 }
 
-.connection-group.highlighted .relation-label-text {
+.relationship-group.highlighted .relation-label-text {
   fill: var(--header-bg);
 }

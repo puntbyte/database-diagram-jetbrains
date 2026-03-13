@@ -90,27 +90,42 @@ class WebviewPanel(
       when (message) {
         is WebviewBridge.Client.Ready -> listener.onWebviewReady()
         is WebviewBridge.Client.Log -> logger.info("Webview: ${message.message}")
-        is WebviewBridge.Client.UpdateTablePos -> listener.onTablePositionUpdated(message.tableName, message.x, message.y, message.width)
-        is WebviewBridge.Client.UpdateNotePos -> listener.onNotePositionUpdated(message.name, message.x, message.y, message.width, message.height)
+        is WebviewBridge.Client.UpdateTablePos -> listener.onTablePositionUpdated(
+          message.tableName,
+          message.x,
+          message.y,
+          message.width
+        )
+
+        is WebviewBridge.Client.UpdateNotePos -> listener.onNotePositionUpdated(
+          message.name,
+          message.x,
+          message.y,
+          message.width,
+          message.height
+        )
       }
     } catch (e: Exception) {
       logger.warn("Failed to parse webview message: ${e.message}")
     }
   }
 
-  // UPDATED: Now accepts settings
-  fun updateSchema(format: String, content: String, settings: WebviewBridge.GlobalSettings? = null) {
+  fun updateSchemaPayload(
+    payload: WebviewBridge.SchemaPayload,
+    settings: WebviewBridge.GlobalSettings? = null
+  ) {
     val browser = jbCefBrowser ?: return
     if (browser.cefBrowser == null) return
     try {
-      val payload = WebviewBridge.Server.UpdateContent(format, content, settings)
-      val json = mapper.writeValueAsString(payload)
+      val message = WebviewBridge.Server.UpdateSchemaPayload(payload, settings)
+      val json = mapper.writeValueAsString(message)
       browser.cefBrowser.executeJavaScript(
         "window.postMessage($json, '*')",
         browser.cefBrowser.url,
         0
       )
-    } catch (_: Exception) { }
+    } catch (_: Exception) {
+    }
   }
 
   fun updateTheme(theme: String) {
@@ -124,7 +139,8 @@ class WebviewPanel(
         browser.cefBrowser.url,
         0
       )
-    } catch (_: Exception) { }
+    } catch (_: Exception) {
+    }
   }
 
   fun updateGlobalSettings(lineStyle: String, showGrid: Boolean, gridSize: Int) {
@@ -138,7 +154,8 @@ class WebviewPanel(
         browser.cefBrowser.url,
         0
       )
-    } catch (_: Exception) { }
+    } catch (_: Exception) {
+    }
   }
 
   override fun dispose() {
