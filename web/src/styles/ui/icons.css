@@ -1,17 +1,17 @@
-/* web/src/styles/icons.css */
+/* web/src/styles/ui/icons.css */
 
 :root {
   /* Key Colors - Light Mode */
-  --icon-pk: #d97706;    /* Amber-600 */
-  --icon-fk: #2563eb;    /* Blue-600 */
+  --icon-pk: #d97706; /* Amber-600 */
+  --icon-fk: #2563eb; /* Blue-600 */
   --icon-pk-fk: #16a34a; /* Green-600 */
   --icon-default: var(--text-secondary);
 }
 
 body.dark {
   /* Key Colors - Dark Mode (Brighter/Pastel for contrast) */
-  --icon-pk: #fbbf24;    /* Amber-400 */
-  --icon-fk: #60a5fa;    /* Blue-400 */
+  --icon-pk: #fbbf24; /* Amber-400 */
+  --icon-fk: #60a5fa; /* Blue-400 */
   --icon-pk-fk: #4ade80; /* Green-400 */
 }
 
@@ -39,17 +39,28 @@ body.dark {
 .key-icon svg path,
 .key-icon svg circle,
 .key-icon svg rect {
-  fill: currentColor !important;  /* Force Filled Color */
-  stroke: none !important;        /* Remove Outline */
+  fill: currentColor !important; /* Force Filled Color */
+  stroke: none !important; /* Remove Outline */
   width: 100%;
   height: 100%;
 }
 
 /* Specific Color Overrides based on Key Type */
-.key-icon.pk { color: var(--icon-pk); }
-.key-icon.fk { color: var(--icon-fk); }
-.key-icon.pk-fk { color: var(--icon-pk-fk); }
-.key-icon.empty { width: 14px; }
+.key-icon.pk {
+  color: var(--icon-pk);
+}
+
+.key-icon.fk {
+  color: var(--icon-fk);
+}
+
+.key-icon.pk-fk {
+  color: var(--icon-pk-fk);
+}
+
+.key-icon.empty {
+  width: 14px;
+}
 
 
 /* =========================================================
@@ -83,12 +94,12 @@ body.dark {
 }
 
 /* Shared Logic for Stroke-based Icons */
-.table-icon svg,      .table-icon svg *,
-.hud-btn svg,         .hud-btn svg *,
-.select-arrow svg,    .select-arrow svg * {
-  fill: none !important;            /* No fill */
-  stroke: currentColor !important;  /* Use parent color */
-  stroke-width: 2px !important;     /* Enforce thickness */
+.table-icon svg, .table-icon svg *,
+.hud-btn svg, .hud-btn svg *,
+.select-arrow svg, .select-arrow svg * {
+  fill: none !important; /* No fill */
+  stroke: currentColor !important; /* Use parent color */
+  stroke-width: 2px !important; /* Enforce thickness */
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke; /* Keeps lines sharp when scaling */

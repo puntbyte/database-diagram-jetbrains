@@ -1,4 +1,4 @@
-/* web/src/styles/column.css */
+/* web/src/styles/widgets/field.css */
 
 .db-row {
   display: flex;
@@ -166,7 +166,7 @@ body.dark .badge.enum {
   border-color: #065f46;
 }
 
-/* Add to column.css / table.css */
+/* Add to field.css / table.css */
 
 /* Define the Flashing Glow Animation */
 @keyframes flashHighlight {
