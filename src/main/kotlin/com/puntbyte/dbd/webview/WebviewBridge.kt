@@ -12,7 +12,6 @@ class WebviewBridge {
     val gridSize: Int
   )
 
-  // --- SHARED DATA MODELS (AST) ---
   data class SchemaPayload(
     val tables: List<DbTable>,
     val relationships: List<DbRelationship>,
@@ -63,6 +62,16 @@ class WebviewBridge {
     val toColumn: String
   )
 
+  // FIX: A single intermediate routing point defined in the .erd.yaml.
+  // `x` is measured outward from the referenced table anchor (always positive).
+  // `y` is measured downward from the column-row centre (may be negative).
+  // `from` tells the JS side which anchor to base the offset on.
+  data class WayPoint(
+    val x: Double,
+    val y: Double,
+    val from: String   // "source" | "target"
+  )
+
   data class DbRelationship(
     val fromSchema: String,
     val fromTable: String,
@@ -71,7 +80,12 @@ class WebviewBridge {
     val toTable: String,
     val toColumns: List<String>,
     val type: String,
-    val settings: Map<String, String>? = null
+    val settings: Map<String, String>? = null,
+    // FIX: Routing overrides loaded from the .erd.yaml `source_anchor`,
+    // `target_anchor`, and `way_points` keys.  Null means "auto-route".
+    val sourceAnchor: String? = null,   // "left" | "right" | null
+    val targetAnchor: String? = null,   // "left" | "right" | null
+    val waypoints: List<WayPoint>? = null
   )
 
   data class DbNote(
@@ -91,7 +105,7 @@ class WebviewBridge {
     val raw: String? = null
   )
 
-  // MESSAGES: IDE -> WEBVIEW
+  // MESSAGES: IDE → WEBVIEW
   @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
   @JsonSubTypes(
     JsonSubTypes.Type(value = Server.UpdateSchemaPayload::class, name = "UPDATE_SCHEMA_PAYLOAD"),
@@ -105,6 +119,10 @@ class WebviewBridge {
     ) : Server()
 
     data class UpdateTheme(val theme: String) : Server()
+
+    // FIX: The TypeScript side reads lineStyle/showGrid/gridSize as flat properties
+    // on the message object.  Jackson serialises this data class with those exact
+    // property names at the top level, so no custom serialiser is needed.
     data class UpdateGlobalSettings(
       val lineStyle: String,
       val showGrid: Boolean,
@@ -112,7 +130,7 @@ class WebviewBridge {
     ) : Server()
   }
 
-  // MESSAGES: WEBVIEW -> IDE
+  // MESSAGES: WEBVIEW → IDE
   @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
   @JsonSubTypes(
     JsonSubTypes.Type(value = Client.Log::class, name = "LOG"),
