@@ -1,3 +1,5 @@
+// database-diagram-jetbrains/build.gradle.kts
+
 plugins {
   id("java")
   id("org.jetbrains.kotlin.jvm") version "2.1.20"
@@ -8,11 +10,151 @@ plugins {
 group = "com.puntbyte"
 version = "1.0-SNAPSHOT"
 
+// ---------------------------------------------------------------------------
+// Web project location — resolved in priority order:
+//   1. WEB_PROJECT_DIR environment variable  (ideal for CI)
+//   2. webProjectDir property in gradle.properties  (ideal for local dev)
+//   3. Sibling directory fallback "../database-diagram-web"
+// ---------------------------------------------------------------------------
+val webProjectDir: File = run {
+  val fromEnv = System.getenv("WEB_PROJECT_DIR")
+  val fromProp = findProperty("webProjectDir") as String?
+  val raw = fromEnv ?: fromProp ?: "../database-diagram-web"
+  file(raw).canonicalFile   // resolve relative paths against project root
+}
+
+// Fail fast with a clear message rather than a cryptic npm exit code 2.
+require(webProjectDir.exists()) {
+  """
+    Web project not found at: $webProjectDir
+ 
+    Fix one of:
+      a) Set webProjectDir=<path> in gradle.properties  (gitignored, local only)
+      b) Export WEB_PROJECT_DIR=<path> in your shell / CI environment
+      c) Place the web project next to this project as  ../database-diagram-web
+    """.trimIndent()
+}
+
+val webDistDir: File = webProjectDir.resolve("dist")
+val webResourcesDir: File = file("src/main/resources/web")
+
+// ---------------------------------------------------------------------------
+// Node / npm configuration
+// ---------------------------------------------------------------------------
+node {
+  version.set("22.22.0")
+  download.set(true)
+  // Store the downloaded Node runtime inside the Kotlin project so it is
+  // not re-downloaded when the web project directory changes.
+  workDir.set(file("${project.projectDir}/.gradle/nodejs"))
+  // Run all npm commands inside the standalone web project directory.
+  nodeProjectDir.set(webProjectDir)
+}
+
+//node {
+//  version.set("22.22.0")
+//  download.set(true)
+//  workDir.set(file("${project.projectDir}/.gradle/nodejs"))
+//  nodeProjectDir.set(file("web")) // Point to our webview folder
+//}
+
+
+// ---------------------------------------------------------------------------
+// Tasks
+// ---------------------------------------------------------------------------
+tasks {
+
+  withType<JavaCompile> {
+    sourceCompatibility = "21"
+    targetCompatibility = "21"
+  }
+
+  kotlin {
+    compilerOptions {
+      jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+    }
+  }
+
+  // Declare inputs on the auto-created npmInstall task.
+  named("npmInstall") {
+    inputs.file(webProjectDir.resolve("package.json"))
+    inputs.file(webProjectDir.resolve("package-lock.json").takeIf { it.exists() }
+      ?: webProjectDir.resolve("package.json"))
+  }
+
+  // Build the web bundle.  Uses `npm run build` which is just `vite build`
+  // so TypeScript compilation errors will not block the Gradle build.
+  // Run `npm run typecheck` separately in the web project to check types.
+  val buildWebview by registering(com.github.gradle.node.npm.task.NpmTask::class) {
+    dependsOn("npmInstall")
+    args.set(listOf("run", "build"))
+
+    // Up-to-date checks: skip if nothing changed.
+    inputs.dir(webProjectDir.resolve("src"))
+    inputs.file(webProjectDir.resolve("package.json"))
+    inputs.file(webProjectDir.resolve("vite.config.ts"))
+    inputs.file(webProjectDir.resolve("index.html"))
+    outputs.dir(webDistDir)
+  }
+
+  // Copy the built bundle into the plugin's resources directory.
+  // Run this task alone with:  ./gradlew copyWebDist
+  val copyWebDist by registering(Copy::class) {
+    dependsOn(buildWebview)
+
+    from(webDistDir)
+    into(webResourcesDir)
+
+    doFirst {
+      // Clear stale files so deleted web assets don't linger in the JAR.
+      webResourcesDir.deleteRecursively()
+    }
+  }
+
+  processResources {
+    dependsOn(copyWebDist)
+  }
+}
+
+
+//tasks {
+//
+//  // Set the JVM compatibility versions
+//  withType<JavaCompile> {
+//    sourceCompatibility = "21"
+//    targetCompatibility = "21"
+//  }
+//
+//  val buildWebview by registering(com.github.gradle.node.npm.task.NpmTask::class) {
+//    dependsOn(npmInstall) // Ensure dependencies are installed
+//    args.set(listOf("run", "build"))
+//
+//    // Caching: Only rebuild if these files change
+//    inputs.dir(file("web/src"))
+//    inputs.file(file("web/package.json"))
+//    inputs.file(file("web/vite.config.ts"))
+//    inputs.file(file("web/index.html"))
+//    outputs.dir(file("src/main/resources/web"))
+//  }
+//
+//  processResources {
+//    dependsOn(buildWebview)
+//  }
+//}
+//
+//kotlin {
+//  compilerOptions {
+//    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+//  }
+//}
+
+// ---------------------------------------------------------------------------
+// Repositories & dependencies (unchanged from original)
+// ---------------------------------------------------------------------------
+
 repositories {
   mavenCentral()
-  intellijPlatform {
-    defaultRepositories()
-  }
+  intellijPlatform { defaultRepositories() }
 }
 
 val localIdePath = "C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.3.3"
@@ -41,50 +183,8 @@ dependencies {
 
 intellijPlatform {
   pluginConfiguration {
-    ideaVersion {
-      sinceBuild = "252.25557"
-    }
-
-    changeNotes = """
-            Initial version
-        """.trimIndent()
+    ideaVersion { sinceBuild = "252.25557" }
+    changeNotes = "Initial version".trimIndent()
   }
 }
 
-node {
-  version.set("22.22.0")
-  download.set(true)
-  workDir.set(file("${project.projectDir}/.gradle/nodejs"))
-  nodeProjectDir.set(file("web")) // Point to our webview folder
-}
-
-tasks {
-
-  // Set the JVM compatibility versions
-  withType<JavaCompile> {
-    sourceCompatibility = "21"
-    targetCompatibility = "21"
-  }
-
-  val buildWebview by registering(com.github.gradle.node.npm.task.NpmTask::class) {
-    dependsOn(npmInstall) // Ensure dependencies are installed
-    args.set(listOf("run", "build"))
-
-    // Caching: Only rebuild if these files change
-    inputs.dir(file("web/src"))
-    inputs.file(file("web/package.json"))
-    inputs.file(file("web/vite.config.ts"))
-    inputs.file(file("web/index.html"))
-    outputs.dir(file("src/main/resources/web"))
-  }
-
-  processResources {
-    dependsOn(buildWebview)
-  }
-}
-
-kotlin {
-  compilerOptions {
-    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
-  }
-}
