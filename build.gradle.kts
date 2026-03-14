@@ -17,7 +17,6 @@ repositories {
 
 val localIdePath = "C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.3.3"
 
-// Read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html
 dependencies {
   intellijPlatform {
     //intellijIdea("2025.2.4")
@@ -25,23 +24,16 @@ dependencies {
     // Use your local IDE installation instead of downloading one
     local(localIdePath)
 
-    // 2. Your local DBML Plugin ZIP
-    //localPlugin(file(localDbmlPluginPath))
-
     // keep the testFramework declaration here if you need it
     testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
 
-
-    // Add plugin dependencies for compilation here, example:
-    // bundledPlugin("com.intellij.java")
 
     // Add JetBrains Database and YAML plugins
     // 1. Add YAML plugin for parsing and updating the .erd.yaml layout file
     bundledPlugin("org.jetbrains.plugins.yaml")
 
     // 2. Add Database plugin for parsing SQL files (PSI)
-    bundledPlugin("com.intellij.database")
-    //bundledPlugin("com.intellij.sql") // SQL PSI comes with this
+    bundledPlugin("com.intellij.database") // SQL PSI comes with this
   }
 
   implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.15.2")

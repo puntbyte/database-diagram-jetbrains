@@ -18,7 +18,6 @@ class DiagramApplication {
     this.bridge = new Bridge((msg) => this.handleServerMessage(msg));
     this.controller = this.initializeController();
     this.setupEventListeners();
-
     this.bridge.log('Diagram application initialized', 'INFO');
   }
 
@@ -33,7 +32,13 @@ class DiagramApplication {
   private handleServerMessage(message: ServerMessage): void {
     switch (message.type) {
       case 'UPDATE_GLOBAL_SETTINGS':
-        this.updateSettings(message.settings);
+        // FIX: Read flat properties (lineStyle, showGrid, gridSize) that Kotlin
+        // emits directly on the message object, not under a nested "settings" key.
+        this.updateSettings({
+          lineStyle: message.lineStyle,
+          showGrid: message.showGrid,
+          gridSize: message.gridSize,
+        });
         break;
 
       case 'UPDATE_SCHEMA_PAYLOAD':
@@ -54,42 +59,19 @@ class DiagramApplication {
     this.controller.updateVisuals(settings);
   }
 
-  private handleTableMove(
-      tableName: string,
-      x: number,
-      y: number,
-      width?: number
-  ): void {
-    this.bridge.send({
-      type: 'UPDATE_TABLE_POS',
-      tableName,
-      x,
-      y,
-      width
-    });
+  private handleTableMove(tableName: string, x: number, y: number, width?: number): void {
+    this.bridge.send({type: 'UPDATE_TABLE_POS', tableName, x, y, width});
   }
 
-  private handleTransformChange(transform: { scale: number; x: number; y: number }): void {
-    // Could debounce this for performance if needed
-    // bridge.send({ type: 'UPDATE_VIEWPORT', ...transform });
+  private handleTransformChange(_transform: { scale: number; x: number; y: number }): void {
   }
 
   private setupEventListeners(): void {
     const app = document.getElementById('app');
     if (!app) return;
-
     app.addEventListener('note-position-changed', (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail) {
-        this.bridge.send({
-          type: 'UPDATE_NOTE_POS',
-          name: detail.name,
-          x: detail.x,
-          y: detail.y,
-          width: detail.width,
-          height: detail.height
-        });
-      }
+      if (detail) this.bridge.send({type: 'UPDATE_NOTE_POS', ...detail});
     });
   }
 
@@ -98,5 +80,4 @@ class DiagramApplication {
   }
 }
 
-// Bootstrap
 new DiagramApplication();
