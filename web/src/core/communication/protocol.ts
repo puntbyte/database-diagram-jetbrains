@@ -1,6 +1,6 @@
 // web/src/core/communication/protocol.ts
 
-import type { DbTable, DbRelationship, DbProject, DbNote } from '../../models/types.ts';
+import type {DbTable, DbRelationship, DbProject, DbNote} from '../../models/types.ts';
 
 export interface SchemaPayload {
   tables: DbTable[];
@@ -9,14 +9,12 @@ export interface SchemaPayload {
   notes: DbNote[];
 }
 
-// Visual configuration shared across messages
 export interface ViewSettings {
   lineStyle: string;
   showGrid: boolean;
   gridSize: number;
 }
 
-// Server → Client messages
 export type ServerMessage =
     | SchemaUpdateMessage
     | ThemeUpdateMessage
@@ -33,22 +31,25 @@ export interface ThemeUpdateMessage {
   theme: 'dark' | 'light';
 }
 
+// FIX: Kotlin's UpdateGlobalSettings serialises as flat top-level properties,
+// NOT nested under a "settings" key.  The previous interface had `settings: ViewSettings`
+// which caused message.settings to always be undefined.
 export interface SettingsUpdateMessage {
   type: 'UPDATE_GLOBAL_SETTINGS';
-  settings: ViewSettings;
+  lineStyle: string;
+  showGrid: boolean;
+  gridSize: number;
 }
 
-// Client → Server messages
 export type ClientMessage =
     | LogMessage
     | ReadyMessage
     | TablePositionUpdateMessage
-    | NotePositionUpdateMessage
-    | SettingsSaveMessage;
+    | NotePositionUpdateMessage;
 
 export interface LogMessage {
   type: 'LOG';
-  level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+  level: string;
   message: string;
 }
 
@@ -71,9 +72,4 @@ export interface NotePositionUpdateMessage {
   y: number;
   width: number;
   height: number;
-}
-
-export interface SettingsSaveMessage {
-  type: 'SAVE_GLOBAL_SETTINGS';
-  settings: Partial<ViewSettings>;
 }

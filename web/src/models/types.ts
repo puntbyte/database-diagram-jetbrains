@@ -46,6 +46,19 @@ export interface DbReference {
 
 export type Cardinality = '1:1' | '1:n' | 'n:1' | 'm:n';
 
+/** A single intermediate canvas point on a user-routed relationship path.
+ *  Coordinates are relative to the anchor of the referenced table edge.
+ *  `x` is measured outward from the anchor (positive = away from the table).
+ *  `y` is measured downward from the column-row centre (may be negative). */
+export interface WayPoint {
+  /** Horizontal offset, always outward from the referenced edge */
+  x: number;
+  /** Vertical offset from the column-row centre */
+  y: number;
+  /** Which table's anchor to base this offset on */
+  from: 'source' | 'target';
+}
+
 export interface DbRelationship {
   fromSchema: string;
   fromTable: string;
@@ -55,6 +68,12 @@ export interface DbRelationship {
   toColumns: string[];
   type: Cardinality;
   settings?: Record<string, string>;
+  /** Explicit side of the source table the line exits from */
+  sourceAnchor?: 'left' | 'right';
+  /** Explicit side of the target table the line arrives at */
+  targetAnchor?: 'left' | 'right';
+  /** User-defined intermediate waypoints loaded from the .erd.yaml */
+  waypoints?: WayPoint[];
 }
 
 export interface DbIndex {
