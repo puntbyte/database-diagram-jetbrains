@@ -1,5 +1,6 @@
 // web/src/components/relationship/path/path-geometer.ts
-import type {Rect, Point, LineStyle, EndpointsConfig} from '../types';
+
+import type {Rect, Point, LineStyle, EndpointsConfig, WayPoint} from '../types';
 
 const PATH_CONFIG = {
   minStraight: 20,
@@ -7,22 +8,18 @@ const PATH_CONFIG = {
   laneWidth: 10,
   minUTurnOffset: 30,
   uTurnFactor: 0.2,
-  // label sizing heuristics (kept in sync with LabelPlacer)
   labelOffset: 10,
   staggerMultiplier: 18,
   maxStagger: 2,
-  // minimum horizontal length for outer segments to show labels comfortably
   minLabelSegment: 20,
-  // minimum vertical separation to avoid label overlap
   minLabelVerticalSeparation: 10,
-  // how strongly we stagger pivots per lane index (multiplier of laneWidth)
   pivotStaggerMultiplier: 1.4
 } as const;
 
 interface AnchorPoints {
   start: Point;
   end: Point;
-  directionStart: number;
+  directionStart: number;  // +1 = right, -1 = left
   directionEnd: number;
 }
 
@@ -37,6 +34,8 @@ export interface PathGeometry {
   control1: Point;
   control2: Point;
   isUTurn: boolean;
+  /** Resolved absolute canvas waypoints when user defined them in YAML */
+  resolvedWaypoints?: Point[];
 }
 
 export class PathGeometer {
@@ -46,10 +45,30 @@ export class PathGeometer {
       config: EndpointsConfig,
       style: LineStyle
   ): PathGeometry {
-    const isUTurn = this.detectUTurn(fromRect, toRect);
-    const anchors = this.calculateAnchorPoints(fromRect, toRect, config, isUTurn);
-    const controls = this.calculateControlPoints(anchors, config, isUTurn, style);
+    // FIX: Self-referencing tables (fromTable === toTable) must always fold to
+    // the LEFT side so the line doesn't run across the table body.
+    const isSelfRef = config.isSelfReference ?? false;
+    const isUTurn = isSelfRef || this.detectUTurn(fromRect, toRect);
 
+    const anchors = this.calculateAnchorPoints(fromRect, toRect, config, isUTurn, isSelfRef);
+
+    // If YAML waypoints exist, resolve them to absolute canvas coords and return
+    // early — the PathComposer will handle the multi-segment path.
+    if (config.waypoints && config.waypoints.length > 0) {
+      const resolved = this.resolveWaypoints(anchors, config.waypoints);
+      const c1 = resolved[0] ?? anchors.start;
+      const c2 = resolved[resolved.length - 1] ?? anchors.end;
+      return {
+        start: anchors.start,
+        end: anchors.end,
+        control1: c1,
+        control2: c2,
+        isUTurn,
+        resolvedWaypoints: resolved
+      };
+    }
+
+    const controls = this.calculateControlPoints(anchors, config, isUTurn, style);
     return {
       start: anchors.start,
       end: anchors.end,
@@ -59,9 +78,24 @@ export class PathGeometer {
     };
   }
 
+  // ── Waypoint resolution ──────────────────────────────────────────────────
+
+  private resolveWaypoints(anchors: AnchorPoints, waypoints: WayPoint[]): Point[] {
+    return waypoints.map(wp => {
+      // `x` is outward from the anchor (positive = away from the table edge).
+      // `y` is downward from the column-row centre.
+      if (wp.from === 'source') {
+        return {x: anchors.start.x + wp.x * anchors.directionStart, y: anchors.start.y + wp.y};
+      } else {
+        return {x: anchors.end.x + wp.x * anchors.directionEnd, y: anchors.end.y + wp.y};
+      }
+    });
+  }
+
+  // ── U-turn detection ─────────────────────────────────────────────────────
+
   private detectUTurn(fromRect: Rect, toRect: Rect): boolean {
-    const overlap =
-        fromRect.x < toRect.x + toRect.width && fromRect.x + fromRect.width > toRect.x;
+    const overlap = fromRect.x < toRect.x + toRect.width && fromRect.x + fromRect.width > toRect.x;
     if (overlap) return true;
 
     const gap =
@@ -69,99 +103,109 @@ export class PathGeometer {
             ? toRect.x - (fromRect.x + fromRect.width)
             : fromRect.x - (toRect.x + toRect.width);
 
-    const requiredPerSide =
-        PATH_CONFIG.labelOffset + PATH_CONFIG.staggerMultiplier * PATH_CONFIG.maxStagger;
-    const margin = 16;
-    if (gap < requiredPerSide * 2 + margin) return true;
-
-    return false;
+    const requiredPerSide = PATH_CONFIG.labelOffset + PATH_CONFIG.staggerMultiplier *
+        PATH_CONFIG.maxStagger;
+    return gap < requiredPerSide * 2 + 16;
   }
+
+  // ── Anchor points ────────────────────────────────────────────────────────
 
   private calculateAnchorPoints(
       fromRect: Rect,
       toRect: Rect,
       config: EndpointsConfig,
-      isUTurn: boolean
+      isUTurn: boolean,
+      isSelfRef: boolean
   ): AnchorPoints {
-    const fromY = this.calculateAnchorY(fromRect, config.fromColIndex, config.fromColTotal);
-    const toY = this.calculateAnchorY(toRect, config.toColIndex, config.toColTotal);
+    const fromY = this.anchorY(fromRect, config.fromColIndex, config.fromColTotal);
+    const toY = this.anchorY(toRect, config.toColIndex, config.toColTotal);
 
-    let startY = fromY;
-    let endY = toY;
+    // Explicit YAML anchor overrides take priority.
+    if (config.sourceAnchor || config.targetAnchor) {
+      return this.buildExplicitAnchors(fromRect, toRect, fromY, toY, config);
+    }
 
     if (isUTurn) {
-      const fromCenterX = fromRect.x + fromRect.width / 2;
-      const toCenterX = toRect.x + toRect.width / 2;
-      const useLeftSide = fromCenterX > toCenterX;
+      // FIX: Self-referencing relations always fold left so the arc appears
+      // beside the table, not across it.  Without this fix, when fromCenterX
+      // equals toCenterX (same table) `useLeftSide` was false (right-side fold)
+      // which drew the line through the middle of the card.
+      const useLeft = isSelfRef || (fromRect.x + fromRect.width / 2) >
+          (toRect.x + toRect.width / 2);
+      return this.buildUTurnAnchors(fromRect, toRect, fromY, toY, useLeft);
+    }
 
-      if (useLeftSide) {
-        const startX = fromRect.x;
-        const endX = toRect.x;
-
-        const verticalSeparation = Math.abs(startY - endY);
-        if (verticalSeparation < PATH_CONFIG.minLabelVerticalSeparation) {
-          const half = (PATH_CONFIG.minLabelVerticalSeparation - verticalSeparation) / 2;
-          if (startY < endY) {
-            startY = startY - half;
-            endY = endY + half;
-          } else {
-            startY = startY + half;
-            endY = endY - half;
-          }
-        }
-
-        return {
-          start: {x: startX, y: startY},
-          end: {x: endX, y: endY},
-          directionStart: -1,
-          directionEnd: -1
-        };
-      } else {
-        const startX = fromRect.x + fromRect.width;
-        const endX = toRect.x + toRect.width;
-
-        const verticalSeparation = Math.abs(startY - endY);
-        if (verticalSeparation < PATH_CONFIG.minLabelVerticalSeparation) {
-          const half = (PATH_CONFIG.minLabelVerticalSeparation - verticalSeparation) / 2;
-          if (startY < endY) {
-            startY = startY - half;
-            endY = endY + half;
-          } else {
-            startY = startY + half;
-            endY = endY - half;
-          }
-        }
-
-        return {
-          start: {x: startX, y: startY},
-          end: {x: endX, y: endY},
+    // Normal left-to-right or right-to-left.
+    return fromRect.x < toRect.x
+        ? {
+          start: {x: fromRect.x + fromRect.width, y: fromY},
+          end: {x: toRect.x, y: toY},
           directionStart: 1,
+          directionEnd: -1
+        }
+        : {
+          start: {x: fromRect.x, y: fromY},
+          end: {x: toRect.x + toRect.width, y: toY},
+          directionStart: -1,
           directionEnd: 1
         };
+  }
+
+  private buildExplicitAnchors(
+      fromRect: Rect, toRect: Rect,
+      fromY: number, toY: number,
+      config: EndpointsConfig
+  ): AnchorPoints {
+    const sa = config.sourceAnchor ?? (fromRect.x < toRect.x ? 'right' : 'left');
+    const ta = config.targetAnchor ?? (toRect.x < fromRect.x ? 'right' : 'left');
+    return {
+      start: {x: sa === 'right' ? fromRect.x + fromRect.width : fromRect.x, y: fromY},
+      end: {x: ta === 'right' ? toRect.x + toRect.width : toRect.x, y: toY},
+      directionStart: sa === 'right' ? 1 : -1,
+      directionEnd: ta === 'right' ? 1 : -1
+    };
+  }
+
+  private buildUTurnAnchors(
+      fromRect: Rect, toRect: Rect,
+      startY: number, endY: number,
+      useLeft: boolean
+  ): AnchorPoints {
+    // Ensure the two endpoints have a minimum vertical separation so labels don't collide.
+    const sep = PATH_CONFIG.minLabelVerticalSeparation;
+    const diff = Math.abs(startY - endY);
+    if (diff < sep) {
+      const half = (sep - diff) / 2;
+      if (startY <= endY) {
+        startY -= half;
+        endY += half;
+      } else {
+        startY += half;
+        endY -= half;
       }
     }
 
-    if (fromRect.x < toRect.x) {
-      return {
-        start: {x: fromRect.x + fromRect.width, y: startY},
-        end: {x: toRect.x, y: endY},
-        directionStart: 1,
-        directionEnd: -1
-      };
-    } else {
-      return {
-        start: {x: fromRect.x, y: startY},
-        end: {x: toRect.x + toRect.width, y: endY},
-        directionStart: -1,
-        directionEnd: 1
-      };
-    }
+    return useLeft
+        ? {
+          start: {x: fromRect.x, y: startY},
+          end: {x: toRect.x, y: endY},
+          directionStart: -1,
+          directionEnd: -1
+        }
+        : {
+          start: {x: fromRect.x + fromRect.width, y: startY},
+          end: {x: toRect.x + toRect.width, y: endY},
+          directionStart: 1,
+          directionEnd: 1
+        };
   }
 
-  private calculateAnchorY(rect: Rect, index: number, total: number): number {
-    if (total <= 1) return rect.y + rect.height / 2;
-    return rect.y + (rect.height * (index + 1)) / (total + 1);
+  private anchorY(rect: Rect, index: number, total: number): number {
+    return total <= 1 ? rect.y + rect.height / 2 : rect.y + (rect.height * (index + 1)) /
+        (total + 1);
   }
+
+  // ── Control points ───────────────────────────────────────────────────────
 
   private calculateControlPoints(
       anchors: AnchorPoints,
@@ -169,87 +213,43 @@ export class PathGeometer {
       isUTurn: boolean,
       style: LineStyle
   ): ControlPoints {
-    const isOrthogonal = this.isOrthogonal(style);
-    const horizontalDistance = Math.abs(anchors.end.x - anchors.start.x);
-
-    let baseOffset = Math.max(
-        PATH_CONFIG.minStraight,
-        Math.min(PATH_CONFIG.maxStraight, horizontalDistance / 2)
-    );
+    const isOrthogonal = style === 'Rectilinear' || style === 'RoundRectilinear';
+    const hDist = Math.abs(anchors.end.x - anchors.start.x);
+    const baseOffset = Math.max(PATH_CONFIG.minStraight, Math.min(PATH_CONFIG.maxStraight, hDist /
+        2));
 
     const offsetFrom = baseOffset +
         (isOrthogonal ? config.fromLaneIndex * PATH_CONFIG.laneWidth : 0);
     const offsetTo = baseOffset + (isOrthogonal ? config.toLaneIndex * PATH_CONFIG.laneWidth : 0);
 
-    let p1: Point = {
-      x: anchors.start.x + offsetFrom * anchors.directionStart,
-      y: anchors.start.y
-    };
-    let p2: Point = {
-      x: anchors.end.x + offsetTo * anchors.directionEnd,
-      y: anchors.end.y
-    };
+    let p1: Point = {x: anchors.start.x + offsetFrom * anchors.directionStart, y: anchors.start.y};
+    let p2: Point = {x: anchors.end.x + offsetTo * anchors.directionEnd, y: anchors.end.y};
 
     if (isUTurn) {
       const pivotMid = (anchors.start.x + anchors.end.x) / 2;
-      const verticalDistance = Math.abs(anchors.end.y - anchors.start.y);
-      const uTurnOffset = Math.max(PATH_CONFIG.minUTurnOffset, verticalDistance *
-          PATH_CONFIG.uTurnFactor);
-
-      // compute base sign (+1 for right-side folds, -1 for left-side folds)
+      const vDist = Math.abs(anchors.end.y - anchors.start.y);
+      const uOffset = Math.max(PATH_CONFIG.minUTurnOffset, vDist * PATH_CONFIG.uTurnFactor);
       const sign = anchors.directionStart > 0 ? 1 : -1;
+      const laneOff = ((config.fromLaneIndex || 0) - (config.toLaneIndex || 0)) *
+          PATH_CONFIG.laneWidth * PATH_CONFIG.pivotStaggerMultiplier;
+      let pivot = pivotMid + sign * (uOffset + Math.abs(laneOff));
 
-      // base proposed pivot biased away from tables by offset
-      let proposedPivot = pivotMid + sign * uTurnOffset;
-
-      // STAGGER: compute a lane-derived lateral offset so multiple U-turns don't share same pivot
-      // Use the difference of lane indexes as a simple, stable discriminator
-      const laneDiff = (config.fromLaneIndex || 0) - (config.toLaneIndex || 0);
-      const laneOffset = laneDiff * PATH_CONFIG.laneWidth * PATH_CONFIG.pivotStaggerMultiplier;
-      // push outward in the same direction as sign to keep fold outside tables, add laneOffset
-      proposedPivot = proposedPivot + sign * Math.abs(laneOffset);
-
-      // ensure pivot is outside both table bounds with at least minLabelSegment spacing
       const leftBound = Math.min(anchors.start.x, anchors.end.x);
       const rightBound = Math.max(anchors.start.x, anchors.end.x);
+      if (sign > 0 && pivot < rightBound + PATH_CONFIG.minLabelSegment) pivot =
+          rightBound + PATH_CONFIG.minLabelSegment;
+      if (sign < 0 && pivot > leftBound - PATH_CONFIG.minLabelSegment) pivot =
+          leftBound - PATH_CONFIG.minLabelSegment;
 
-      if (sign > 0) {
-        const minPivot = rightBound + PATH_CONFIG.minLabelSegment;
-        if (proposedPivot < minPivot) proposedPivot = minPivot;
-      } else {
-        const maxPivot = leftBound - PATH_CONFIG.minLabelSegment;
-        if (proposedPivot > maxPivot) proposedPivot = maxPivot;
-      }
+      const s1 = Math.abs(pivot - anchors.start.x);
+      const s2 = Math.abs(anchors.end.x - pivot);
+      const shortage = Math.max(0, PATH_CONFIG.minLabelSegment - Math.min(s1, s2));
+      if (shortage > 0) pivot += sign * shortage;
 
-      // Ensure the two horizontal arms are long enough; if short, push pivot further outward.
-      const ensureSegments = () => {
-        const seg1 = Math.abs(proposedPivot - anchors.start.x);
-        const seg3 = Math.abs(anchors.end.x - proposedPivot);
-        const minSeg = PATH_CONFIG.minLabelSegment;
-
-        if (seg1 < minSeg || seg3 < minSeg) {
-          const shortfall1 = Math.max(0, minSeg - seg1);
-          const shortfall3 = Math.max(0, minSeg - seg3);
-
-          // move pivot further outward by the larger shortfall
-          const moveOut = Math.max(shortfall1, shortfall3);
-          proposedPivot = proposedPivot + sign * moveOut;
-        }
-      };
-
-      ensureSegments();
-
-      // assign pivot to both control points (vertical fold)
-      p1.x = proposedPivot;
-      p2.x = proposedPivot;
-      p1.y = anchors.start.y;
-      p2.y = anchors.end.y;
+      p1 = {x: pivot, y: anchors.start.y};
+      p2 = {x: pivot, y: anchors.end.y};
     }
 
     return {p1, p2};
-  }
-
-  private isOrthogonal(style: LineStyle): boolean {
-    return style === 'Rectilinear' || style === 'RoundRectilinear';
   }
 }
