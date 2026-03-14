@@ -12,31 +12,31 @@ version = "1.0-SNAPSHOT"
 
 // ---------------------------------------------------------------------------
 // Web project location — resolved in priority order:
-//   1. WEB_PROJECT_DIR environment variable  (ideal for CI)
+//   1. WEB_PROJECT_DIR environment variable   (ideal for CI)
 //   2. webProjectDir property in gradle.properties  (ideal for local dev)
 //   3. Sibling directory fallback "../database-diagram-web"
 // ---------------------------------------------------------------------------
 val webProjectDir: File = run {
-  val fromEnv = System.getenv("WEB_PROJECT_DIR")
-  val fromProp = findProperty("webProjectDir") as String?
-  val raw = fromEnv ?: fromProp ?: "../database-diagram-web"
-  file(raw).canonicalFile   // resolve relative paths against project root
+  val raw = System.getenv("WEB_PROJECT_DIR")
+    ?: (findProperty("webProjectDir") as String?)
+    ?: "../database-diagram-web"
+  file(raw).canonicalFile
 }
 
-// Fail fast with a clear message rather than a cryptic npm exit code 2.
 require(webProjectDir.exists()) {
   """
     Web project not found at: $webProjectDir
  
     Fix one of:
-      a) Set webProjectDir=<path> in gradle.properties  (gitignored, local only)
+      a) Set webProjectDir=<path> in gradle.properties (gitignored, local only)
       b) Export WEB_PROJECT_DIR=<path> in your shell / CI environment
-      c) Place the web project next to this project as  ../database-diagram-web
+      c) Place the web project as a sibling: ../database-diagram-web
     """.trimIndent()
 }
 
 val webDistDir: File = webProjectDir.resolve("dist")
 val webResourcesDir: File = file("src/main/resources/web")
+
 
 // ---------------------------------------------------------------------------
 // Node / npm configuration
@@ -44,10 +44,7 @@ val webResourcesDir: File = file("src/main/resources/web")
 node {
   version.set("22.22.0")
   download.set(true)
-  // Store the downloaded Node runtime inside the Kotlin project so it is
-  // not re-downloaded when the web project directory changes.
   workDir.set(file("${project.projectDir}/.gradle/nodejs"))
-  // Run all npm commands inside the standalone web project directory.
   nodeProjectDir.set(webProjectDir)
 }
 
@@ -68,21 +65,15 @@ tasks {
     }
   }
 
-  // Declare inputs on the auto-created npmInstall task.
   named("npmInstall") {
     inputs.file(webProjectDir.resolve("package.json"))
-    inputs.file(webProjectDir.resolve("package-lock.json").takeIf { it.exists() }
-      ?: webProjectDir.resolve("package.json"))
   }
 
-  // Build the web bundle.  Uses `npm run build` which is just `vite build`
-  // so TypeScript compilation errors will not block the Gradle build.
-  // Run `npm run typecheck` separately in the web project to check types.
+  // 1. Run `npm run build` in the standalone web project.
   val buildWebview by registering(com.github.gradle.node.npm.task.NpmTask::class) {
     dependsOn("npmInstall")
     args.set(listOf("run", "build"))
 
-    // Up-to-date checks: skip if nothing changed.
     inputs.dir(webProjectDir.resolve("src"))
     inputs.file(webProjectDir.resolve("package.json"))
     inputs.file(webProjectDir.resolve("vite.config.ts"))
@@ -90,24 +81,34 @@ tasks {
     outputs.dir(webDistDir)
   }
 
-  // Copy the built bundle into the plugin's resources directory.
-  // Run this task alone with:  ./gradlew copyWebDist
-  val copyWebDist by registering(Copy::class) {
+  // 2. Sync the built bundle into the plugin's resources directory.
+  //
+  // FIX: Using `Sync` instead of `Copy` + `doFirst { deleteRecursively() }`.
+  //
+  // The old approach had:
+  //   val copyWebDist by registering(Copy::class) {
+  //       doFirst { webResourcesDir.deleteRecursively() }   // <-- problem
+  //   }
+  //
+  // `doFirst {}` captures `webResourcesDir` (a Gradle script object / File
+  // local variable) as a lambda closure.  The configuration cache cannot
+  // serialise these script-level references, so it fails with:
+  //   "cannot serialize Gradle script object references"
+  //
+  // `Sync` is a drop-in replacement that automatically removes files in the
+  // destination that no longer exist in the source — exactly what
+  // `deleteRecursively` was doing — without any closure or doFirst block.
+  val copyWebDist by registering(Sync::class) {
     dependsOn(buildWebview)
-
     from(webDistDir)
     into(webResourcesDir)
-
-    doFirst {
-      // Clear stale files so deleted web assets don't linger in the JAR.
-      webResourcesDir.deleteRecursively()
-    }
   }
 
   processResources {
     dependsOn(copyWebDist)
   }
 }
+
 
 // ---------------------------------------------------------------------------
 // Repositories & dependencies (unchanged from original)
@@ -118,14 +119,14 @@ repositories {
   intellijPlatform { defaultRepositories() }
 }
 
-val localIdePath = "C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.3.3"
+//val localIdePath = "C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.3.3"
 
 dependencies {
   intellijPlatform {
-    //intellijIdea("2025.2.4")
+    intellijIdea("2025.2.4")
 
     // Use your local IDE installation instead of downloading one
-    local(localIdePath)
+    //local(localIdePath)
 
     // keep the testFramework declaration here if you need it
     testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
