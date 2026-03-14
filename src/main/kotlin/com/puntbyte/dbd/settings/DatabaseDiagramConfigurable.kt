@@ -16,6 +16,20 @@ class DatabaseDiagramConfigurable : Configurable {
   override fun createComponent(): JComponent {
     val panel = panel {
 
+      group("Editor") {
+        row("Default layout:") {
+          comboBox(DatabaseDiagramSettings.EditorLayout.entries)
+            .bindItem(
+              getter = { settings.state.defaultEditorLayout },
+              setter = {
+                settings.state.defaultEditorLayout =
+                  it ?: DatabaseDiagramSettings.EditorLayout.EDITOR_AND_PREVIEW
+              }
+            )
+            .comment("Which panels to show when opening an .erd.yaml file")
+        }
+      }
+
       group("Defaults") {
         row("Line Style:") {
           comboBox(listOf("Curve", "Rectilinear", "RoundRectilinear", "Oblique", "RoundOblique"))
@@ -51,13 +65,7 @@ class DatabaseDiagramConfigurable : Configurable {
         }
       }
 
-      // ── Doc-comment note display ─────────────────────────────────────────
       group("Doc-Comment Notes") {
-        // FIX: Capture the Cell<JCheckBox> in a lateinit var so we can call
-        // .selected on it.  `Cell<AbstractButton>.selected` is an extension
-        // property that returns a ComponentPredicate, which is what enabledIf()
-        // expects.  The previous code called a standalone selected() function
-        // that does not exist in this scope, causing the compile error.
         lateinit var showTableNotes: Cell<javax.swing.JCheckBox>
         lateinit var showFieldNotes: Cell<javax.swing.JCheckBox>
 
@@ -77,7 +85,6 @@ class DatabaseDiagramConfigurable : Configurable {
             .comment("0 = show all lines (no clamp)")
             .enabledIf(showTableNotes.selected)
         }
-
         row {
           showFieldNotes = checkBox("Show column / field notes")
             .bindSelected(

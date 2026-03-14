@@ -12,27 +12,24 @@ import com.intellij.util.messages.Topic
 )
 class DatabaseDiagramSettings : PersistentStateComponent<DatabaseDiagramSettings.State> {
 
+  enum class EditorLayout(val displayName: String) {
+    EDITOR_ONLY("Editor"),
+    EDITOR_AND_PREVIEW("Editor and Preview"),
+    PREVIEW_ONLY("Preview");
+
+    override fun toString() = displayName
+  }
+
   data class State(
     var defaultLineStyle: String = "Curve",
     var defaultShowGrid: Boolean = true,
     var defaultGridSize: Int = 20,
     var defaultTheme: String = "System",
-
-    // ── Doc-comment note display ──────────────────────────────────────────
-    /** Show the table-header doc comment in the diagram card */
+    /** Which panels to show when opening an .erd.yaml file */
+    var defaultEditorLayout: EditorLayout = EditorLayout.EDITOR_AND_PREVIEW,
     var showTableNotes: Boolean = true,
-    /** Show column/field doc comments in the diagram card */
     var showFieldNotes: Boolean = true,
-    /**
-     * Maximum visible lines for table notes.
-     * 0 = unlimited (full text shown, scrolls if needed).
-     * Applied via CSS -webkit-line-clamp so no JS re-render is required.
-     */
     var tableNoteMaxLines: Int = 2,
-    /**
-     * Maximum visible lines for field notes.
-     * 0 = unlimited.
-     */
     var fieldNoteMaxLines: Int = 2,
   )
 
