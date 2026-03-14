@@ -51,13 +51,6 @@ node {
   nodeProjectDir.set(webProjectDir)
 }
 
-//node {
-//  version.set("22.22.0")
-//  download.set(true)
-//  workDir.set(file("${project.projectDir}/.gradle/nodejs"))
-//  nodeProjectDir.set(file("web")) // Point to our webview folder
-//}
-
 
 // ---------------------------------------------------------------------------
 // Tasks
@@ -115,38 +108,6 @@ tasks {
     dependsOn(copyWebDist)
   }
 }
-
-
-//tasks {
-//
-//  // Set the JVM compatibility versions
-//  withType<JavaCompile> {
-//    sourceCompatibility = "21"
-//    targetCompatibility = "21"
-//  }
-//
-//  val buildWebview by registering(com.github.gradle.node.npm.task.NpmTask::class) {
-//    dependsOn(npmInstall) // Ensure dependencies are installed
-//    args.set(listOf("run", "build"))
-//
-//    // Caching: Only rebuild if these files change
-//    inputs.dir(file("web/src"))
-//    inputs.file(file("web/package.json"))
-//    inputs.file(file("web/vite.config.ts"))
-//    inputs.file(file("web/index.html"))
-//    outputs.dir(file("src/main/resources/web"))
-//  }
-//
-//  processResources {
-//    dependsOn(buildWebview)
-//  }
-//}
-//
-//kotlin {
-//  compilerOptions {
-//    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
-//  }
-//}
 
 // ---------------------------------------------------------------------------
 // Repositories & dependencies (unchanged from original)
