@@ -3,30 +3,25 @@
 import type {DbField} from '../../models/types.ts';
 import {Icons} from '../ui/icons.ts';
 
-// Extract configuration
 const BADGE_CONFIG = {
-  enum: { text: 'ENUM', className: 'enum', titlePrefix: 'Enum values: ' },
-  unique: { text: 'UQ', className: 'unique' },
-  notNull: { text: 'NN', className: 'not-null' }
+  enum: {text: 'ENUM', className: 'enum', titlePrefix: 'Enum values: '},
+  unique: {text: 'UQ', className: 'unique'},
+  notNull: {text: 'NN', className: 'not-null'}
 } as const;
 
-const CSS_CLASSES = {
+const CSS = {
   row: 'db-row',
   indexedRow: 'indexed-row',
+  mainRow: 'row-main',
   leftSection: 'row-left',
   rightSection: 'row-right',
   keyIcon: 'key-icon',
-  pk: 'pk',
-  fk: 'fk',
-  pkFk: 'pk-fk',
-  empty: 'empty',
-  nameContainer: 'name-container',
+  pk: 'pk', fk: 'fk', pkFk: 'pk-fk', empty: 'empty',
   fieldName: 'field-name',
-  fieldNote: 'field-note',
+  fieldNote: 'field-note',     // full-width, placed outside the flex row
   typeContainer: 'type-container',
   fieldType: 'field-type',
   constrainedType: 'constrained-type',
-  fieldDefault: 'field-default',
   badge: 'badge'
 } as const;
 
@@ -34,146 +29,113 @@ type KeyType = 'pk' | 'fk' | 'pkFk' | null;
 
 export class FieldWidget {
   static create(field: DbField, tableId: string): HTMLElement {
-    const row = this.createRow(field, tableId);
-    const leftSection = this.createLeftSection(field);
-    const rightSection = this.createRightSection(field);
-
-    row.append(leftSection, rightSection);
-    return row;
-  }
-
-  private static createRow(field: DbField, tableId: string): HTMLElement {
     const row = document.createElement('div');
-    row.className = CSS_CLASSES.row;
+    row.className = CSS.row;
     row.id = `col-${tableId}-${field.name}`;
+    if (field.isUnique) row.classList.add(CSS.indexedRow);
 
-    if (field.isUnique) {
-      row.classList.add(CSS_CLASSES.indexedRow);
+    // ── Main content row (flex between left and right) ──
+    const mainRow = document.createElement('div');
+    mainRow.className = CSS.mainRow;
+    mainRow.append(this.createLeftSection(field), this.createRightSection(field));
+    row.appendChild(mainRow);
+
+    // ── Note: full-width, rendered BELOW the main row ──
+    // FIX: Previously the note was nested inside .row-left (name-container) which
+    // has `overflow: hidden` and only spans the left column width.  Long notes were
+    // clipped mid-word.  Placing the note as a second child of .db-row (which is
+    // now flex-direction:column) lets it span the full card width and wrap freely.
+    if (field.note) {
+      const note = document.createElement('div');
+      note.className = CSS.fieldNote;
+      note.textContent = field.note;
+      row.appendChild(note);
     }
 
     return row;
   }
+
+  // ── Left: key icon + field name ──────────────────────────────────────────
 
   private static createLeftSection(field: DbField): HTMLElement {
     const section = document.createElement('div');
-    section.className = CSS_CLASSES.leftSection;
-
-    const keyIcon = this.createKeyIcon(field);
-    const nameContainer = this.createNameContainer(field);
-
-    section.append(keyIcon, nameContainer);
+    section.className = CSS.leftSection;
+    section.append(this.createKeyIcon(field), this.createFieldName(field));
     return section;
   }
 
-  private static createKeyIcon(field: DbField): HTMLElement {
-    const container = document.createElement('span');
-    container.className = CSS_CLASSES.keyIcon;
-
-    const keyType = this.determineKeyType(field);
-
-    if (keyType) {
-      container.innerHTML = Icons.key;
-      container.classList.add(CSS_CLASSES[keyType]);
-      container.title = this.getKeyTitle(keyType);
-    } else {
-      container.classList.add(CSS_CLASSES.empty);
-    }
-
-    return container;
+  private static createFieldName(field: DbField): HTMLElement {
+    const span = document.createElement('span');
+    span.className = CSS.fieldName;
+    span.textContent = field.name;
+    return span;
   }
 
-  private static determineKeyType(field: DbField): KeyType {
+  private static createKeyIcon(field: DbField): HTMLElement {
+    const el = document.createElement('span');
+    el.className = CSS.keyIcon;
+    const keyType = this.keyType(field);
+    if (keyType) {
+      el.innerHTML = Icons.key;
+      el.classList.add(CSS[keyType]);
+      el.title = {pk: 'Primary Key', fk: 'Foreign Key', pkFk: 'Primary & Foreign Key'}[keyType];
+    } else {
+      el.classList.add(CSS.empty);
+    }
+    return el;
+  }
+
+  private static keyType(field: DbField): KeyType {
     if (field.isPrimaryKey && field.isForeignKey) return 'pkFk';
     if (field.isPrimaryKey) return 'pk';
     if (field.isForeignKey) return 'fk';
     return null;
   }
 
-  private static getKeyTitle(keyType: Exclude<KeyType, null>): string {
-    const titles = {
-      pk: 'Primary Key',
-      fk: 'Foreign Key',
-      pkFk: 'Primary & Foreign Key'
-    };
-    return titles[keyType];
-  }
-
-  private static createNameContainer(field: DbField): HTMLElement {
-    const container = document.createElement('div');
-    container.className = CSS_CLASSES.nameContainer;
-
-    const name = document.createElement('span');
-    name.className = CSS_CLASSES.fieldName;
-    name.textContent = field.name;
-    container.appendChild(name);
-
-    if (field.note) {
-      const note = document.createElement('div');
-      note.className = CSS_CLASSES.fieldNote;
-      note.textContent = field.note;
-      container.appendChild(note);
-    }
-
-    return container;
-  }
+  // ── Right: badges + type chip (with inline default) ──────────────────────
 
   private static createRightSection(field: DbField): HTMLElement {
     const section = document.createElement('div');
-    section.className = CSS_CLASSES.rightSection;
-
-    const typeContainer = this.createTypeContainer(field);
-    const badges = this.createBadges(field);
-
-    section.append(...badges, typeContainer);
+    section.className = CSS.rightSection;
+    section.append(...this.createBadges(field), this.createTypeChip(field));
     return section;
   }
 
-  private static createTypeContainer(field: DbField): HTMLElement {
+  /** FIX: Show the default value inline beside the type as `type: default`
+   *  instead of on a separate line.  This keeps rows compact and eliminates
+   *  the ".field-default" element that caused the row to grow unpredictably. */
+  private static createTypeChip(field: DbField): HTMLElement {
     const container = document.createElement('div');
-    container.className = CSS_CLASSES.typeContainer;
+    container.className = CSS.typeContainer;
 
-    const type = document.createElement('span');
-    type.className = CSS_CLASSES.fieldType;
-    if (field.isUnique) {
-      type.classList.add(CSS_CLASSES.constrainedType);
-    }
-    type.textContent = field.type;
-    container.appendChild(type);
+    const chip = document.createElement('span');
+    chip.className = CSS.fieldType;
+    if (field.isUnique) chip.classList.add(CSS.constrainedType);
 
-    if (field.default) {
-      const defaultValue = document.createElement('div');
-      defaultValue.className = CSS_CLASSES.fieldDefault;
-      defaultValue.textContent = `default: ${field.default}`;
-      container.appendChild(defaultValue);
-    }
+    chip.textContent = field.default
+        ? `${field.type}: ${field.default}`
+        : field.type;
 
+    container.appendChild(chip);
     return container;
   }
 
   private static createBadges(field: DbField): HTMLElement[] {
     const badges: HTMLElement[] = [];
-
     if (field.enumValues?.length) {
-      const enumBadge = this.createBadge(BADGE_CONFIG.enum);
-      enumBadge.title = `${BADGE_CONFIG.enum.titlePrefix}${field.enumValues.join(', ')}`;
-      badges.push(enumBadge);
+      const b = this.badge(BADGE_CONFIG.enum);
+      b.title = `${BADGE_CONFIG.enum.titlePrefix}${field.enumValues.join(', ')}`;
+      badges.push(b);
     }
-
-    if (field.isUnique) {
-      badges.push(this.createBadge(BADGE_CONFIG.unique));
-    }
-
-    if (field.isNotNull) {
-      badges.push(this.createBadge(BADGE_CONFIG.notNull));
-    }
-
+    if (field.isUnique) badges.push(this.badge(BADGE_CONFIG.unique));
+    if (field.isNotNull) badges.push(this.badge(BADGE_CONFIG.notNull));
     return badges;
   }
 
-  private static createBadge(config: { text: string; className: string }): HTMLElement {
-    const badge = document.createElement('span');
-    badge.className = `${CSS_CLASSES.badge} ${config.className}`;
-    badge.textContent = config.text;
-    return badge;
+  private static badge(config: { text: string; className: string }): HTMLElement {
+    const el = document.createElement('span');
+    el.className = `${CSS.badge} ${config.className}`;
+    el.textContent = config.text;
+    return el;
   }
 }
