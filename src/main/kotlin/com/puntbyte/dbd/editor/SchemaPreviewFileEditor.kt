@@ -29,19 +29,17 @@ class SchemaPreviewFileEditor(
 
   @Volatile
   var isDisposed = false; private set
-
-  // Counter to suppress re-renders triggered by layout-only YAML saves.
   @Volatile
   var pendingLayoutSaves = 0; private set
 
   init {
-    val connection = ApplicationManager.getApplication().messageBus.connect(this)
-    connection.subscribe(LafManagerListener.TOPIC, object : LafManagerListener {
+    val conn = ApplicationManager.getApplication().messageBus.connect(this)
+    conn.subscribe(LafManagerListener.TOPIC, object : LafManagerListener {
       override fun lookAndFeelChanged(source: LafManager) {
         updateTheme()
       }
     })
-    connection.subscribe(
+    conn.subscribe(
       DatabaseDiagramSettings.TOPIC,
       object : DatabaseDiagramSettings.SettingsChangedListener {
         override fun onSettingsChanged(settings: DatabaseDiagramSettings.State) {
@@ -70,30 +68,25 @@ class SchemaPreviewFileEditor(
 
   fun render(document: Document) {
     if (isDisposed) return
-    val psiFile =
-      PsiDocumentManager.getInstance(project).getPsiFile(document) as? YAMLFile ?: return
-    val payload = ErdDataBuilder.build(psiFile, project)
-    val settings = DatabaseDiagramSettings.instance.state
-    val global = WebviewBridge.GlobalSettings(
-      lineStyle = settings.defaultLineStyle,
-      showGrid = settings.defaultShowGrid,
-      gridSize = settings.defaultGridSize,
-      showTableNotes = settings.showTableNotes,
-      showFieldNotes = settings.showFieldNotes,
-      tableNoteMaxLines = settings.tableNoteMaxLines,
-      fieldNoteMaxLines = settings.fieldNoteMaxLines,
+    val psi = PsiDocumentManager.getInstance(project).getPsiFile(document) as? YAMLFile ?: return
+    val payload = ErdDataBuilder.build(psi, project)
+    val s = DatabaseDiagramSettings.instance.state
+    webviewPanel.updateSchemaPayload(
+      payload, WebviewBridge.GlobalSettings(
+        lineStyle = s.defaultLineStyle, showGrid = s.defaultShowGrid, gridSize = s.defaultGridSize,
+        showTableNotes = s.showTableNotes, showFieldNotes = s.showFieldNotes,
+        tableNoteMaxLines = s.tableNoteMaxLines, fieldNoteMaxLines = s.fieldNoteMaxLines,
+      )
     )
-    webviewPanel.updateSchemaPayload(payload, global)
   }
 
   private fun updateTheme() {
     if (isDisposed) return
-    val themeStr = when (DatabaseDiagramSettings.instance.state.defaultTheme) {
-      "Light" -> "light"
-      "Dark" -> "dark"
+    val t = when (DatabaseDiagramSettings.instance.state.defaultTheme) {
+      "Light" -> "light"; "Dark" -> "dark"
       else -> if (!JBColor.isBright()) "dark" else "light"
     }
-    webviewPanel.updateTheme(themeStr)
+    webviewPanel.updateTheme(t)
   }
 
   override fun onWebviewReady() {
@@ -106,31 +99,45 @@ class SchemaPreviewFileEditor(
 
   override fun onTablePositionUpdated(tableName: String, x: Int, y: Int, width: Int?) {
     pendingLayoutSaves++
-    updateFile { psi -> ErdYamlUpdater.updateTablePosition(project, psi, tableName, x, y, width) }
+    updateFile { ErdYamlUpdater.updateTablePosition(project, it, tableName, x, y, width) }
     ApplicationManager.getApplication()
       .invokeLater { if (pendingLayoutSaves > 0) pendingLayoutSaves-- }
   }
 
   override fun onNotePositionUpdated(name: String, x: Int, y: Int, width: Int, height: Int) {
     pendingLayoutSaves++
-    updateFile { psi -> ErdYamlUpdater.updateNotePosition(project, psi, name, x, y, width, height) }
+    updateFile { ErdYamlUpdater.updateNotePosition(project, it, name, x, y, width, height) }
+    ApplicationManager.getApplication()
+      .invokeLater { if (pendingLayoutSaves > 0) pendingLayoutSaves-- }
+  }
+
+  override fun onTableColorUpdated(tableName: String, color: String) {
+    pendingLayoutSaves++
+    updateFile { ErdYamlUpdater.updateTableColor(project, it, tableName, color) }
+    ApplicationManager.getApplication()
+      .invokeLater { if (pendingLayoutSaves > 0) pendingLayoutSaves-- }
+  }
+
+  override fun onNoteColorUpdated(noteId: String, color: String) {
+    pendingLayoutSaves++
+    updateFile { ErdYamlUpdater.updateNoteColor(project, it, noteId, color) }
     ApplicationManager.getApplication()
       .invokeLater { if (pendingLayoutSaves > 0) pendingLayoutSaves-- }
   }
 
   private fun updateFile(action: (YAMLFile) -> Unit) {
     if (isDisposed || project.isDisposed) return
-    val document = ApplicationManager.getApplication().runReadAction<Document?> {
+    val doc = ApplicationManager.getApplication().runReadAction<Document?> {
       FileDocumentManager.getInstance().getDocument(file)
     } ?: return
-    if (!file.isValid || !document.isWritable) return
-    val psi = PsiDocumentManager.getInstance(project).getPsiFile(document) as? YAMLFile ?: return
+    if (!file.isValid || !doc.isWritable) return
+    val psi = PsiDocumentManager.getInstance(project).getPsiFile(doc) as? YAMLFile ?: return
     action(psi)
   }
 
   override fun setState(state: FileEditorState) {}
-  override fun isModified(): Boolean = false
-  override fun isValid(): Boolean = true
+  override fun isModified() = false
+  override fun isValid() = true
   override fun addPropertyChangeListener(listener: PropertyChangeListener) {}
   override fun removePropertyChangeListener(listener: PropertyChangeListener) {}
   override fun dispose() {

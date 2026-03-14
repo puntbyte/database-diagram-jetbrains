@@ -27,6 +27,8 @@ class WebviewPanel(
     fun onWebviewReady()
     fun onTablePositionUpdated(tableName: String, x: Int, y: Int, width: Int?)
     fun onNotePositionUpdated(name: String, x: Int, y: Int, width: Int, height: Int)
+    fun onTableColorUpdated(tableName: String, color: String)
+    fun onNoteColorUpdated(noteId: String, color: String)
   }
 
   companion object {
@@ -44,29 +46,22 @@ class WebviewPanel(
 
   private fun initBrowser() {
     if (!JBCefApp.isSupported()) {
-      component.add(JLabel("JCEF Not Supported"), BorderLayout.CENTER)
-      return
+      component.add(JLabel("JCEF Not Supported"), BorderLayout.CENTER); return
     }
-
-    val browser = JBCefBrowser.createBuilder()
-      .setEnableOpenDevToolsMenuItem(true)
-      .build()
-
+    val browser = JBCefBrowser.createBuilder().setEnableOpenDevToolsMenuItem(true).build()
     jbCefBrowser = browser
     component.add(browser.component, BorderLayout.CENTER)
 
     val router = CefMessageRouter.create()
     router.addHandler(object : CefMessageRouterHandlerAdapter() {
       override fun onQuery(
-        browser: CefBrowser?, frame: CefFrame?, queryId: Long, request: String?,
-        persistent: Boolean, callback: CefQueryCallback?
+        browser: CefBrowser?, frame: CefFrame?, queryId: Long,
+        request: String?, persistent: Boolean, callback: CefQueryCallback?
       ): Boolean {
-        handleClientQuery(request)
-        return true
+        handleClientQuery(request); return true
       }
     }, true)
     browser.jbCefClient.cefClient.addMessageRouter(router)
-
     loadContent(browser)
     Disposer.register(parentDisposable, browser)
     Disposer.register(parentDisposable, this)
@@ -75,27 +70,42 @@ class WebviewPanel(
   private fun loadContent(browser: JBCefBrowser) {
     val stream = javaClass.getResourceAsStream(RESOURCE_PATH)
     if (stream == null) {
-      browser.loadHTML("<h3>Error: index.html not found</h3>")
-      return
+      browser.loadHTML("<h3>Error: index.html not found</h3>"); return
     }
-    val html = stream.bufferedReader().use { it.readText() }
-    val encoded = Base64.getEncoder().encodeToString(html.toByteArray(Charsets.UTF_8))
+    val encoded = Base64.getEncoder()
+      .encodeToString(stream.bufferedReader().use { it.readText() }.toByteArray(Charsets.UTF_8))
     browser.loadURL("data:text/html;charset=utf-8;base64,$encoded")
   }
 
   private fun handleClientQuery(request: String?) {
     if (request == null) return
     try {
-      val message = mapper.readValue(request, WebviewBridge.Client::class.java)
-      when (message) {
+      when (val msg = mapper.readValue(request, WebviewBridge.Client::class.java)) {
         is WebviewBridge.Client.Ready -> listener.onWebviewReady()
-        is WebviewBridge.Client.Log -> logger.info("Webview: ${message.message}")
+        is WebviewBridge.Client.Log -> logger.info("Webview: ${msg.message}")
         is WebviewBridge.Client.UpdateTablePos -> listener.onTablePositionUpdated(
-          message.tableName, message.x, message.y, message.width
+          msg.tableName,
+          msg.x,
+          msg.y,
+          msg.width
         )
 
         is WebviewBridge.Client.UpdateNotePos -> listener.onNotePositionUpdated(
-          message.name, message.x, message.y, message.width, message.height
+          msg.name,
+          msg.x,
+          msg.y,
+          msg.width,
+          msg.height
+        )
+
+        is WebviewBridge.Client.UpdateTableColor -> listener.onTableColorUpdated(
+          msg.tableName,
+          msg.color
+        )
+
+        is WebviewBridge.Client.UpdateNoteColor -> listener.onNoteColorUpdated(
+          msg.noteId,
+          msg.color
         )
       }
     } catch (e: Exception) {
@@ -106,38 +116,26 @@ class WebviewPanel(
   fun updateSchemaPayload(
     payload: WebviewBridge.SchemaPayload,
     settings: WebviewBridge.GlobalSettings? = null
-  ) {
+  ) =
     executeJs(WebviewBridge.Server.UpdateSchemaPayload(payload, settings))
-  }
 
-  fun updateTheme(theme: String) {
-    executeJs(WebviewBridge.Server.UpdateTheme(theme))
-  }
+  fun updateTheme(theme: String) = executeJs(WebviewBridge.Server.UpdateTheme(theme))
 
-  // FIX: Extended signature to include note-display settings.
-  // All params are forwarded into UpdateGlobalSettings which Jackson serialises
-  // as flat top-level fields, matching the TS SettingsUpdateMessage interface.
   fun updateGlobalSettings(
-    lineStyle: String,
-    showGrid: Boolean,
-    gridSize: Int,
-    showTableNotes: Boolean = true,
-    showFieldNotes: Boolean = true,
-    tableNoteMaxLines: Int = 2,
-    fieldNoteMaxLines: Int = 2,
-  ) {
-    executeJs(
-      WebviewBridge.Server.UpdateGlobalSettings(
-        lineStyle = lineStyle,
-        showGrid = showGrid,
-        gridSize = gridSize,
-        showTableNotes = showTableNotes,
-        showFieldNotes = showFieldNotes,
-        tableNoteMaxLines = tableNoteMaxLines,
-        fieldNoteMaxLines = fieldNoteMaxLines,
-      )
+    lineStyle: String, showGrid: Boolean, gridSize: Int,
+    showTableNotes: Boolean = true, showFieldNotes: Boolean = true,
+    tableNoteMaxLines: Int = 2, fieldNoteMaxLines: Int = 2,
+  ) = executeJs(
+    WebviewBridge.Server.UpdateGlobalSettings(
+      lineStyle,
+      showGrid,
+      gridSize,
+      showTableNotes,
+      showFieldNotes,
+      tableNoteMaxLines,
+      fieldNoteMaxLines
     )
-  }
+  )
 
   private fun executeJs(payload: WebviewBridge.Server) {
     val browser = jbCefBrowser ?: return
