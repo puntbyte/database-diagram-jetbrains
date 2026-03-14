@@ -9,7 +9,11 @@ class WebviewBridge {
   data class GlobalSettings(
     val lineStyle: String,
     val showGrid: Boolean,
-    val gridSize: Int
+    val gridSize: Int,
+    val showTableNotes: Boolean = true,
+    val showFieldNotes: Boolean = true,
+    val tableNoteMaxLines: Int = 2,
+    val fieldNoteMaxLines: Int = 2,
   )
 
   data class SchemaPayload(
@@ -20,26 +24,18 @@ class WebviewBridge {
   )
 
   data class DbProject(
-    val zoom: Double? = null,
-    val panX: Double? = null,
-    val panY: Double? = null,
-    val databaseType: String? = null,
-    val note: String? = null
+    val zoom: Double? = null, val panX: Double? = null, val panY: Double? = null,
+    val databaseType: String? = null, val note: String? = null
   )
 
   data class DbTable(
-    val id: String,
-    val schema: String,
-    val name: String,
+    val id: String, val schema: String, val name: String,
     val alias: String? = null,
     val fields: List<DbField>,
     val settings: Map<String, String>? = null,
     val indexes: List<DbIndex>? = null,
-    val note: String? = null,
-    val color: String? = null,
-    val horizontal: Int? = null,
-    val vertical: Int? = null,
-    val width: Int? = null
+    val note: String? = null, val color: String? = null,
+    val horizontal: Int? = null, val vertical: Int? = null, val width: Int? = null
   )
 
   data class DbField(
@@ -52,60 +48,48 @@ class WebviewBridge {
     val default: String? = null,
     val enumValues: List<String>? = null,
     val reference: DbReference? = null,
-    val note: String? = null
+    val note: String? = null,
+    /**
+     * Semantic category for non-standard / user-defined types.
+     * Set by ErdDataBuilder by scanning CREATE TYPE / CREATE DOMAIN statements.
+     *
+     * Values: "ENUM" | "RECORD" | "DOMAIN" | "RANGE" | "BASE" | null
+     *   null  → standard built-in type, no badge shown on the web side.
+     *
+     * The web layer is database-agnostic: it never maintains a list of
+     * "standard" types — it simply renders whatever category it receives.
+     */
+    val typeCategory: String? = null,
   )
 
   data class DbReference(
-    val symbol: String,
-    val toSchema: String,
-    val toTable: String,
-    val toColumn: String
+    val symbol: String, val toSchema: String, val toTable: String, val toColumn: String
   )
 
-  // FIX: A single intermediate routing point defined in the .erd.yaml.
-  // `x` is measured outward from the referenced table anchor (always positive).
-  // `y` is measured downward from the column-row centre (may be negative).
-  // `from` tells the JS side which anchor to base the offset on.
-  data class WayPoint(
-    val x: Double,
-    val y: Double,
-    val from: String   // "source" | "target"
-  )
+  data class WayPoint(val x: Double, val y: Double, val from: String)
 
   data class DbRelationship(
-    val fromSchema: String,
-    val fromTable: String,
-    val fromColumns: List<String>,
-    val toSchema: String,
-    val toTable: String,
-    val toColumns: List<String>,
+    val fromSchema: String, val fromTable: String, val fromColumns: List<String>,
+    val toSchema: String, val toTable: String, val toColumns: List<String>,
     val type: String,
     val settings: Map<String, String>? = null,
-    // FIX: Routing overrides loaded from the .erd.yaml `source_anchor`,
-    // `target_anchor`, and `way_points` keys.  Null means "auto-route".
-    val sourceAnchor: String? = null,   // "left" | "right" | null
-    val targetAnchor: String? = null,   // "left" | "right" | null
+    val sourceAnchor: String? = null,
+    val targetAnchor: String? = null,
     val waypoints: List<WayPoint>? = null
   )
 
   data class DbNote(
-    val id: String,
-    val name: String,
-    val content: String,
-    val horizontal: Int,
-    val vertical: Int,
-    val width: Int,
-    val height: Int? = null,
-    val color: String? = null
+    val id: String, val name: String, val content: String,
+    val horizontal: Int, val vertical: Int,
+    val width: Int, val height: Int? = null, val color: String? = null
   )
 
   data class DbIndex(
-    val columns: List<String>,
-    val settings: Map<String, String>? = null,
-    val raw: String? = null
+    val columns: List<String>, val settings: Map<String, String>? = null, val raw: String? = null
   )
 
-  // MESSAGES: IDE → WEBVIEW
+  // ── IDE → Webview ─────────────────────────────────────────────────────────
+
   @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
   @JsonSubTypes(
     JsonSubTypes.Type(value = Server.UpdateSchemaPayload::class, name = "UPDATE_SCHEMA_PAYLOAD"),
@@ -119,18 +103,15 @@ class WebviewBridge {
     ) : Server()
 
     data class UpdateTheme(val theme: String) : Server()
-
-    // FIX: The TypeScript side reads lineStyle/showGrid/gridSize as flat properties
-    // on the message object.  Jackson serialises this data class with those exact
-    // property names at the top level, so no custom serialiser is needed.
     data class UpdateGlobalSettings(
-      val lineStyle: String,
-      val showGrid: Boolean,
-      val gridSize: Int
+      val lineStyle: String, val showGrid: Boolean, val gridSize: Int,
+      val showTableNotes: Boolean = true, val showFieldNotes: Boolean = true,
+      val tableNoteMaxLines: Int = 2, val fieldNoteMaxLines: Int = 2,
     ) : Server()
   }
 
-  // MESSAGES: WEBVIEW → IDE
+  // ── Webview → IDE ─────────────────────────────────────────────────────────
+
   @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
   @JsonSubTypes(
     JsonSubTypes.Type(value = Client.Log::class, name = "LOG"),

@@ -28,37 +28,25 @@ class SchemaPreviewFileEditor(
   private val webviewPanel = WebviewPanel(this, file, this)
 
   @Volatile
-  var isDisposed = false
-    private set
+  var isDisposed = false; private set
 
-  // FIX: Track whether the current document change was triggered by the webview
-  // saving a layout position (drag/resize).  When true the document listener in
-  // SchemaSplitEditorProvider must skip the re-render so the diagram does not
-  // flash or "settle" back to a slightly-rounded position right after the user
-  // drops a table.
-  //
-  // We use a counter instead of a boolean so that rapid back-to-back saves
-  // (e.g. multi-column composite FK writes) are handled correctly.
+  // Counter to suppress re-renders triggered by layout-only YAML saves.
   @Volatile
-  var pendingLayoutSaves = 0
-    private set
+  var pendingLayoutSaves = 0; private set
 
   init {
     val connection = ApplicationManager.getApplication().messageBus.connect(this)
-
     connection.subscribe(LafManagerListener.TOPIC, object : LafManagerListener {
       override fun lookAndFeelChanged(source: LafManager) {
         updateTheme()
       }
     })
-
     connection.subscribe(
       DatabaseDiagramSettings.TOPIC,
       object : DatabaseDiagramSettings.SettingsChangedListener {
         override fun onSettingsChanged(settings: DatabaseDiagramSettings.State) {
           if (!isDisposed) {
-            pushSettings(settings)
-            updateTheme()
+            pushSettings(settings); updateTheme()
           }
         }
       })
@@ -72,32 +60,35 @@ class SchemaPreviewFileEditor(
     webviewPanel.updateGlobalSettings(
       lineStyle = settings.defaultLineStyle,
       showGrid = settings.defaultShowGrid,
-      gridSize = settings.defaultGridSize
+      gridSize = settings.defaultGridSize,
+      showTableNotes = settings.showTableNotes,
+      showFieldNotes = settings.showFieldNotes,
+      tableNoteMaxLines = settings.tableNoteMaxLines,
+      fieldNoteMaxLines = settings.fieldNoteMaxLines,
     )
   }
 
   fun render(document: Document) {
     if (isDisposed) return
-
-    val psiManager = PsiDocumentManager.getInstance(project)
-    val psiFile = psiManager.getPsiFile(document) as? YAMLFile ?: return
-
+    val psiFile =
+      PsiDocumentManager.getInstance(project).getPsiFile(document) as? YAMLFile ?: return
     val payload = ErdDataBuilder.build(psiFile, project)
-
     val settings = DatabaseDiagramSettings.instance.state
-    val globalSettings = WebviewBridge.GlobalSettings(
+    val global = WebviewBridge.GlobalSettings(
       lineStyle = settings.defaultLineStyle,
       showGrid = settings.defaultShowGrid,
-      gridSize = settings.defaultGridSize
+      gridSize = settings.defaultGridSize,
+      showTableNotes = settings.showTableNotes,
+      showFieldNotes = settings.showFieldNotes,
+      tableNoteMaxLines = settings.tableNoteMaxLines,
+      fieldNoteMaxLines = settings.fieldNoteMaxLines,
     )
-
-    webviewPanel.updateSchemaPayload(payload, globalSettings)
+    webviewPanel.updateSchemaPayload(payload, global)
   }
 
   private fun updateTheme() {
     if (isDisposed) return
-    val globalTheme = DatabaseDiagramSettings.instance.state.defaultTheme
-    val themeStr = when (globalTheme) {
+    val themeStr = when (DatabaseDiagramSettings.instance.state.defaultTheme) {
       "Light" -> "light"
       "Dark" -> "dark"
       else -> if (!JBColor.isBright()) "dark" else "light"
@@ -109,48 +100,32 @@ class SchemaPreviewFileEditor(
     if (isDisposed) return
     updateTheme()
     ApplicationManager.getApplication().runReadAction {
-      val document = FileDocumentManager.getInstance().getDocument(file)
-      if (document != null) {
-        render(document)
-      }
+      FileDocumentManager.getInstance().getDocument(file)?.let { render(it) }
     }
   }
 
   override fun onTablePositionUpdated(tableName: String, x: Int, y: Int, width: Int?) {
-    // FIX: Increment the counter BEFORE the write so the document listener
-    // sees it in time, then decrement via invokeLater which runs after the
-    // document change event has been dispatched on the EDT.
     pendingLayoutSaves++
-    updateFile { document ->
-      val psiFile = PsiDocumentManager.getInstance(project).getPsiFile(document) as? YAMLFile
-        ?: return@updateFile
-      ErdYamlUpdater.updateTablePosition(project, psiFile, tableName, x, y, width)
-    }
-    ApplicationManager.getApplication().invokeLater {
-      if (pendingLayoutSaves > 0) pendingLayoutSaves--
-    }
+    updateFile { psi -> ErdYamlUpdater.updateTablePosition(project, psi, tableName, x, y, width) }
+    ApplicationManager.getApplication()
+      .invokeLater { if (pendingLayoutSaves > 0) pendingLayoutSaves-- }
   }
 
   override fun onNotePositionUpdated(name: String, x: Int, y: Int, width: Int, height: Int) {
     pendingLayoutSaves++
-    updateFile { document ->
-      val psiFile = PsiDocumentManager.getInstance(project).getPsiFile(document) as? YAMLFile
-        ?: return@updateFile
-      ErdYamlUpdater.updateNotePosition(project, psiFile, name, x, y, width, height)
-    }
-    ApplicationManager.getApplication().invokeLater {
-      if (pendingLayoutSaves > 0) pendingLayoutSaves--
-    }
+    updateFile { psi -> ErdYamlUpdater.updateNotePosition(project, psi, name, x, y, width, height) }
+    ApplicationManager.getApplication()
+      .invokeLater { if (pendingLayoutSaves > 0) pendingLayoutSaves-- }
   }
 
-  private fun updateFile(action: (Document) -> Unit) {
+  private fun updateFile(action: (YAMLFile) -> Unit) {
     if (isDisposed || project.isDisposed) return
     val document = ApplicationManager.getApplication().runReadAction<Document?> {
       FileDocumentManager.getInstance().getDocument(file)
     } ?: return
     if (!file.isValid || !document.isWritable) return
-
-    action(document)
+    val psi = PsiDocumentManager.getInstance(project).getPsiFile(document) as? YAMLFile ?: return
+    action(psi)
   }
 
   override fun setState(state: FileEditorState) {}

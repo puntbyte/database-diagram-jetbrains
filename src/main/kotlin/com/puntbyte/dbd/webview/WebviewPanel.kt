@@ -91,18 +91,11 @@ class WebviewPanel(
         is WebviewBridge.Client.Ready -> listener.onWebviewReady()
         is WebviewBridge.Client.Log -> logger.info("Webview: ${message.message}")
         is WebviewBridge.Client.UpdateTablePos -> listener.onTablePositionUpdated(
-          message.tableName,
-          message.x,
-          message.y,
-          message.width
+          message.tableName, message.x, message.y, message.width
         )
 
         is WebviewBridge.Client.UpdateNotePos -> listener.onNotePositionUpdated(
-          message.name,
-          message.x,
-          message.y,
-          message.width,
-          message.height
+          message.name, message.x, message.y, message.width, message.height
         )
       }
     } catch (e: Exception) {
@@ -114,40 +107,42 @@ class WebviewPanel(
     payload: WebviewBridge.SchemaPayload,
     settings: WebviewBridge.GlobalSettings? = null
   ) {
-    val browser = jbCefBrowser ?: return
-    if (browser.cefBrowser == null) return
-    try {
-      val message = WebviewBridge.Server.UpdateSchemaPayload(payload, settings)
-      val json = mapper.writeValueAsString(message)
-      browser.cefBrowser.executeJavaScript(
-        "window.postMessage($json, '*')",
-        browser.cefBrowser.url,
-        0
-      )
-    } catch (_: Exception) {
-    }
+    executeJs(WebviewBridge.Server.UpdateSchemaPayload(payload, settings))
   }
 
   fun updateTheme(theme: String) {
-    val browser = jbCefBrowser ?: return
-    if (browser.cefBrowser == null) return
-    try {
-      val payload = WebviewBridge.Server.UpdateTheme(theme)
-      val json = mapper.writeValueAsString(payload)
-      browser.cefBrowser.executeJavaScript(
-        "window.postMessage($json, '*')",
-        browser.cefBrowser.url,
-        0
-      )
-    } catch (_: Exception) {
-    }
+    executeJs(WebviewBridge.Server.UpdateTheme(theme))
   }
 
-  fun updateGlobalSettings(lineStyle: String, showGrid: Boolean, gridSize: Int) {
+  // FIX: Extended signature to include note-display settings.
+  // All params are forwarded into UpdateGlobalSettings which Jackson serialises
+  // as flat top-level fields, matching the TS SettingsUpdateMessage interface.
+  fun updateGlobalSettings(
+    lineStyle: String,
+    showGrid: Boolean,
+    gridSize: Int,
+    showTableNotes: Boolean = true,
+    showFieldNotes: Boolean = true,
+    tableNoteMaxLines: Int = 2,
+    fieldNoteMaxLines: Int = 2,
+  ) {
+    executeJs(
+      WebviewBridge.Server.UpdateGlobalSettings(
+        lineStyle = lineStyle,
+        showGrid = showGrid,
+        gridSize = gridSize,
+        showTableNotes = showTableNotes,
+        showFieldNotes = showFieldNotes,
+        tableNoteMaxLines = tableNoteMaxLines,
+        fieldNoteMaxLines = fieldNoteMaxLines,
+      )
+    )
+  }
+
+  private fun executeJs(payload: WebviewBridge.Server) {
     val browser = jbCefBrowser ?: return
     if (browser.cefBrowser == null) return
     try {
-      val payload = WebviewBridge.Server.UpdateGlobalSettings(lineStyle, showGrid, gridSize)
       val json = mapper.writeValueAsString(payload)
       browser.cefBrowser.executeJavaScript(
         "window.postMessage($json, '*')",

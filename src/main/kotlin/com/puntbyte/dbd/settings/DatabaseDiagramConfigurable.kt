@@ -3,10 +3,7 @@ package com.puntbyte.dbd.settings
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.ui.DialogPanel
-import com.intellij.ui.dsl.builder.bindIntText
-import com.intellij.ui.dsl.builder.bindItem
-import com.intellij.ui.dsl.builder.bindSelected
-import com.intellij.ui.dsl.builder.panel
+import com.intellij.ui.dsl.builder.*
 import javax.swing.JComponent
 
 class DatabaseDiagramConfigurable : Configurable {
@@ -18,6 +15,7 @@ class DatabaseDiagramConfigurable : Configurable {
 
   override fun createComponent(): JComponent {
     val panel = panel {
+
       group("Defaults") {
         row("Line Style:") {
           comboBox(listOf("Curve", "Rectilinear", "RoundRectilinear", "Oblique", "RoundOblique"))
@@ -52,28 +50,67 @@ class DatabaseDiagramConfigurable : Configurable {
             .comment("System follows the IDE theme")
         }
       }
+
+      // ── Doc-comment note display ─────────────────────────────────────────
+      group("Doc-Comment Notes") {
+        // FIX: Capture the Cell<JCheckBox> in a lateinit var so we can call
+        // .selected on it.  `Cell<AbstractButton>.selected` is an extension
+        // property that returns a ComponentPredicate, which is what enabledIf()
+        // expects.  The previous code called a standalone selected() function
+        // that does not exist in this scope, causing the compile error.
+        lateinit var showTableNotes: Cell<javax.swing.JCheckBox>
+        lateinit var showFieldNotes: Cell<javax.swing.JCheckBox>
+
+        row {
+          showTableNotes = checkBox("Show table header notes")
+            .bindSelected(
+              getter = { settings.state.showTableNotes },
+              setter = { settings.state.showTableNotes = it }
+            )
+        }
+        row("Max table note lines:") {
+          intTextField(range = 0..10)
+            .bindIntText(
+              getter = { settings.state.tableNoteMaxLines },
+              setter = { settings.state.tableNoteMaxLines = it }
+            )
+            .comment("0 = show all lines (no clamp)")
+            .enabledIf(showTableNotes.selected)
+        }
+
+        row {
+          showFieldNotes = checkBox("Show column / field notes")
+            .bindSelected(
+              getter = { settings.state.showFieldNotes },
+              setter = { settings.state.showFieldNotes = it }
+            )
+        }
+        row("Max field note lines:") {
+          intTextField(range = 0..10)
+            .bindIntText(
+              getter = { settings.state.fieldNoteMaxLines },
+              setter = { settings.state.fieldNoteMaxLines = it }
+            )
+            .comment("0 = show all lines (no clamp)")
+            .enabledIf(showFieldNotes.selected)
+        }
+      }
     }
+
     myPanel = panel
     return panel
   }
 
-  override fun isModified(): Boolean {
-    // Delegate to the panel to check if UI matches the bound properties
-    return myPanel?.isModified() ?: false
-  }
+  override fun isModified(): Boolean = myPanel?.isModified() ?: false
 
   override fun apply() {
-    // 1. Commit UI changes to the settings.state properties
     myPanel?.apply()
-
-    // 2. Notify Listeners (Editors)
     ApplicationManager.getApplication().messageBus
       .syncPublisher(DatabaseDiagramSettings.TOPIC)
       .onSettingsChanged(settings.state)
   }
 
   override fun reset() {
-    // Reset UI from the settings.state properties
     myPanel?.reset()
   }
 
