@@ -68,16 +68,16 @@ object ErdDataBuilder {
     val rels = mutableListOf<DbRelationship>()
     val baseDir = yamlFile.virtualFile.parent
 
-    // Pass 0: build custom-type registry
+    // Pass 0: custom type registry
     val customTypeRegistry = mutableMapOf<String, String>()
     val enumValueRegistry = mutableMapOf<String, List<String>>()
     for (path in imports) {
       val psi = psiFromPath(baseDir, path, project) ?: continue
       val raw = psi.text
       CREATE_ENUM_REGEX.findAll(raw).forEach { m ->
-        val name = m.groupValues[1].lowercase()
-        customTypeRegistry[name] = "ENUM"
-        enumValueRegistry[name] = m.groupValues[2].split(",")
+        val n = m.groupValues[1].lowercase()
+        customTypeRegistry[n] = "ENUM"
+        enumValueRegistry[n] = m.groupValues[2].split(",")
           .map { it.trim().removeSurrounding("'").removeSurrounding("\"") }
           .filter { it.isNotEmpty() }
       }
@@ -102,7 +102,7 @@ object ErdDataBuilder {
       }
     }
 
-    // Pass 2: tables
+    // Pass 2: build tables + relationships
     for (path in imports) {
       val psi = psiFromPath(baseDir, path, project) ?: continue
       for (tableDef in PsiTreeUtil.findChildrenOfType(psi, SqlTableDefinition::class.java)) {
@@ -142,7 +142,8 @@ object ErdDataBuilder {
               rels.add(
                 DbRelationship(
                   fromSchema = "public", fromTable = tableName, fromColumns = listOf(colName),
-                  toSchema = "public", toTable = refTable, toColumns = listOf(refCol), type = "n:1"
+                  toSchema = "public", toTable = refTable, toColumns = listOf(refCol),
+                  type = "n:1"
                 )
               )
             }
@@ -150,22 +151,67 @@ object ErdDataBuilder {
         }
         dbTables.add(
           DbTable(
-            id = tableName,
-            schema = "public",
-            name = tableName,
-            fields = fields,
-            note = extractDocComment(tableDef)
+            id = tableName, schema = "public", name = tableName,
+            fields = fields, note = extractDocComment(tableDef)
           )
         )
       }
     }
 
-    // Merge YAML visual layout
+    // ── Merge YAML visual layout ──────────────────────────────────────────────
+    //
+    // FIX: Detect table renames.
+    //
+    // When a table is renamed in SQL (e.g. CREATE TABLE old → CREATE TABLE new):
+    //   • The YAML `tables:` still has the old name as a key with saved x/y/width.
+    //   • The new SQL name has no entry, so it appears at 0,0 with default width.
+    //   • The old key becomes an orphan that accumulates over time.
+    //
+    // Detection heuristic (conservative — avoids false positives):
+    //   • sqlTableNames  = all tables found in SQL this render
+    //   • yamlLayoutKeys = all keys in the YAML `tables:` mapping
+    //   • orphaned = yamlLayoutKeys − sqlTableNames  (exist in YAML but not SQL)
+    //   • newTables = sqlTableNames − yamlLayoutKeys (in SQL but no YAML layout)
+    //
+    // If exactly ONE table disappeared and exactly ONE new table appeared, it
+    // is very likely a rename.  We copy the orphan's layout to the new name
+    // so the table keeps its position and width, and the orphan key is left
+    // in the YAML (the user can clean it up, or the IDE will overwrite it
+    // naturally on next drag/resize under the new name).
+    //
+    // We intentionally do NOT auto-delete the old key here because:
+    //   a) We don't want to silently mutate the YAML file on every render.
+    //   b) The heuristic could be wrong (two simultaneous add/remove operations).
+    // The user sees the correct position immediately; the YAML self-corrects on
+    // the next drag or resize under the new name.
+
     val tablesMap = root.getKeyValueByKey("tables")?.value as? YAMLMapping
+
     if (tablesMap != null) {
+      val sqlTableNames = dbTables.map { it.id }.toSet()
+      val yamlLayoutKeys = tablesMap.keyValues.mapNotNull { it.keyText }.toSet()
+
+      val orphaned = yamlLayoutKeys - sqlTableNames   // in YAML but not SQL
+      val newTables = sqlTableNames - yamlLayoutKeys  // in SQL but not YAML
+
+      // Build a rename map: orphan → new table (only when 1-to-1 match)
+      val renameMap: Map<String, String> = if (orphaned.size == 1 && newTables.size == 1) {
+        mapOf(orphaned.first() to newTables.first())
+      } else {
+        emptyMap()
+      }
+
       for (i in dbTables.indices) {
         val t = dbTables[i]
-        val lm = tablesMap.getKeyValueByKey(t.id)?.value as? YAMLMapping ?: continue
+
+        // Look up layout key: try exact match first, then renamed source
+        val layoutKey = when {
+          yamlLayoutKeys.contains(t.id) -> t.id
+          renameMap.values.contains(t.id) -> renameMap.entries.first { it.value == t.id }.key
+          else -> null
+        } ?: continue
+
+        val lm = tablesMap.getKeyValueByKey(layoutKey)?.value as? YAMLMapping ?: continue
         dbTables[i] = t.copy(
           horizontal = lm.getKeyValueByKey("x")?.valueText?.toIntOrNull(),
           vertical = lm.getKeyValueByKey("y")?.valueText?.toIntOrNull(),
@@ -175,12 +221,14 @@ object ErdDataBuilder {
       }
     }
 
-    // Merge YAML relationship overrides
+    // ── Merge YAML relationship overrides ─────────────────────────────────────
     val relSeq = root.getKeyValueByKey("relationships")?.value as? YAMLSequence
     if (relSeq != null) {
       for (yr in parseYamlRelationships(relSeq)) {
-        val idx =
-          rels.indexOfFirst { r -> r.fromTable == yr.fromTable && r.fromColumns == yr.fromColumns && r.toTable == yr.toTable && r.toColumns == yr.toColumns }
+        val idx = rels.indexOfFirst { r ->
+          r.fromTable == yr.fromTable && r.fromColumns == yr.fromColumns &&
+              r.toTable == yr.toTable && r.toColumns == yr.toColumns
+        }
         if (idx >= 0) rels[idx] = rels[idx].copy(
           sourceAnchor = yr.sourceAnchor ?: rels[idx].sourceAnchor,
           targetAnchor = yr.targetAnchor ?: rels[idx].targetAnchor,
@@ -190,66 +238,13 @@ object ErdDataBuilder {
       }
     }
 
-    // ── Parse YAML notes block ────────────────────────────────────────────
-    //
-    // Format:
-    //   notes:
-    //     - id: "note_001"
-    //       text: "Note body"   (or multi-line block scalar)
-    //       x: 1300
-    //       y: 150
-    //       width: 250
-    //       color: "#fffde7"
-    //       target: "orders.user_id"    # optional callout target
-    //       target_anchor: right        # optional: left|right|top|bottom
-    val notes = parseYamlNotes(root)
-
     return SchemaPayload(
-      tables = dbTables,
-      relationships = rels,
-      projectSettings = DbProject(),
-      notes = notes
+      tables = dbTables, relationships = rels,
+      projectSettings = DbProject(), notes = parseYamlNotes(root)
     )
   }
 
-  // ── Notes parsing ──────────────────────────────────────────────────────────
-
-  private fun parseYamlNotes(root: YAMLMapping): List<DbNote> {
-    val seq = root.getKeyValueByKey("notes")?.value as? YAMLSequence ?: return emptyList()
-    return seq.items.mapNotNull { item ->
-      val m = item.value as? YAMLMapping ?: return@mapNotNull null
-      val id =
-        m.getKeyValueByKey("id")?.valueText?.removeSurrounding("\"") ?: return@mapNotNull null
-      // Support both `text:` (new) and `content:` (legacy) keys
-      val text = m.getKeyValueByKey("text")?.valueText
-        ?: m.getKeyValueByKey("content")?.valueText
-        ?: return@mapNotNull null
-      val x = m.getKeyValueByKey("x")?.valueText?.toIntOrNull() ?: 0
-      val y = m.getKeyValueByKey("y")?.valueText?.toIntOrNull() ?: 0
-      val width = m.getKeyValueByKey("width")?.valueText?.toIntOrNull() ?: 200
-      val height = m.getKeyValueByKey("height")?.valueText?.toIntOrNull()
-      val color = m.getKeyValueByKey("color")?.valueText?.removeSurrounding("\"")
-
-      val target = m.getKeyValueByKey("target")?.valueText?.removeSurrounding("\"")
-      val targetAnchor = m.getKeyValueByKey("target_anchor")?.valueText?.lowercase()
-        ?.takeIf { it in setOf("left", "right", "top", "bottom") }
-
-      DbNote(
-        id = id,
-        name = id,   // use id as the save key (matches UPDATE_NOTE_POS.name)
-        content = text.removeSurrounding("\"").trim(),
-        horizontal = x,
-        vertical = y,
-        width = width,
-        height = height,
-        color = color,
-        target = target,
-        targetAnchor = targetAnchor,
-      )
-    }
-  }
-
-  // ── Type extraction helpers ────────────────────────────────────────────────
+  // ── Type helpers ───────────────────────────────────────────────────────────
 
   private fun extractFullType(colName: String, colText: String): String? {
     val after = colText.removePrefix("\"$colName\"").removePrefix(colName).trimStart()
@@ -275,7 +270,7 @@ object ErdDataBuilder {
       .filter { it.isNotEmpty() }.ifEmpty { null }
   }
 
-  // ── Multi-line doc comment extraction ─────────────────────────────────────
+  // ── Doc comment (multi-line) ───────────────────────────────────────────────
 
   private fun extractDocComment(element: PsiElement): String? {
     val lines = mutableListOf<String>()
@@ -287,9 +282,9 @@ object ErdDataBuilder {
     outer@ while (prev != null) {
       when {
         prev is PsiComment -> {
-          val text = prev.text.trim()
-          if (text.startsWith("---")) {
-            lines.add(0, text.removePrefix("---").trim())
+          val t = prev.text.trim()
+          if (t.startsWith("---")) {
+            lines.add(0, t.removePrefix("---").trim())
             prev = prev.prevSibling
             while (prev != null && prev is PsiWhiteSpace) {
               if (prev.text.contains("\n\n")) break@outer
@@ -308,15 +303,43 @@ object ErdDataBuilder {
     return if (lines.isEmpty()) null else lines.joinToString(" ")
   }
 
-  // ── YAML helpers ──────────────────────────────────────────────────────────
+  // ── YAML notes ─────────────────────────────────────────────────────────────
+
+  private fun parseYamlNotes(root: YAMLMapping): List<DbNote> {
+    val seq = root.getKeyValueByKey("notes")?.value as? YAMLSequence ?: return emptyList()
+    return seq.items.mapNotNull { item ->
+      val m = item.value as? YAMLMapping ?: return@mapNotNull null
+      val id =
+        m.getKeyValueByKey("id")?.valueText?.removeSurrounding("\"") ?: return@mapNotNull null
+      val text = m.getKeyValueByKey("text")?.valueText ?: m.getKeyValueByKey("content")?.valueText
+      ?: return@mapNotNull null
+      val x = m.getKeyValueByKey("x")?.valueText?.toIntOrNull() ?: 0
+      val y = m.getKeyValueByKey("y")?.valueText?.toIntOrNull() ?: 0
+      val width = m.getKeyValueByKey("width")?.valueText?.toIntOrNull() ?: 200
+      DbNote(
+        id = id, name = id,
+        content = text.removeSurrounding("\"").trim(),
+        horizontal = x, vertical = y, width = width,
+        height = m.getKeyValueByKey("height")?.valueText?.toIntOrNull(),
+        color = m.getKeyValueByKey("color")?.valueText?.removeSurrounding("\""),
+        target = m.getKeyValueByKey("target")?.valueText?.removeSurrounding("\""),
+        targetAnchor = m.getKeyValueByKey("target_anchor")?.valueText?.lowercase()
+          ?.takeIf { it in setOf("left", "right", "top", "bottom") }
+      )
+    }
+  }
+
+  // ── YAML relationships ─────────────────────────────────────────────────────
 
   private fun parseYamlRelationships(seq: YAMLSequence): List<DbRelationship> {
     return seq.items.mapNotNull { item ->
       val m = item.value as? YAMLMapping ?: return@mapNotNull null
-      val source = m.getKeyValueByKey("source")?.valueText ?: return@mapNotNull null
-      val target = m.getKeyValueByKey("target")?.valueText ?: return@mapNotNull null
-      val (fromTable, fromCol) = splitDot(source) ?: return@mapNotNull null
-      val (toTable, toCol) = splitDot(target) ?: return@mapNotNull null
+      val (fromTable, fromCol) = splitDot(
+        m.getKeyValueByKey("source")?.valueText ?: return@mapNotNull null
+      ) ?: return@mapNotNull null
+      val (toTable, toCol) = splitDot(
+        m.getKeyValueByKey("target")?.valueText ?: return@mapNotNull null
+      ) ?: return@mapNotNull null
       DbRelationship(
         fromSchema = "public", fromTable = fromTable, fromColumns = listOf(fromCol),
         toSchema = "public", toTable = toTable, toColumns = listOf(toCol),
@@ -341,7 +364,8 @@ object ErdDataBuilder {
         x = m.getKeyValueByKey("x")?.valueText?.toDoubleOrNull() ?: return@mapNotNull null,
         y = m.getKeyValueByKey("y")?.valueText?.toDoubleOrNull() ?: return@mapNotNull null,
         from = m.getKeyValueByKey("from")?.valueText?.lowercase()
-          ?.takeIf { it in setOf("source", "target") } ?: return@mapNotNull null)
+          ?.takeIf { it in setOf("source", "target") } ?: return@mapNotNull null
+      )
     }
     return pts.ifEmpty { null }
   }
@@ -353,9 +377,8 @@ object ErdDataBuilder {
   }
 
   private fun extractImports(root: YAMLMapping): List<String> {
-    val seq =
-      (root.getKeyValueByKey("schema")?.value as? YAMLMapping)?.getKeyValueByKey("imports")?.value as? YAMLSequence
-        ?: return emptyList()
+    val seq = (root.getKeyValueByKey("schema")?.value as? YAMLMapping)
+      ?.getKeyValueByKey("imports")?.value as? YAMLSequence ?: return emptyList()
     return seq.items.mapNotNull { it.value?.text?.removeSurrounding("\"") }
   }
 
@@ -364,5 +387,6 @@ object ErdDataBuilder {
     path: String,
     project: Project
   ) =
-    baseDir.findFileByRelativePath(path)?.let { PsiManager.getInstance(project).findFile(it) }
+    baseDir.findFileByRelativePath(path)
+      ?.let { com.intellij.psi.PsiManager.getInstance(project).findFile(it) }
 }
