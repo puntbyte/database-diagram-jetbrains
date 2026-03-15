@@ -25,7 +25,7 @@ class SchemaPreviewFileEditor(
   private val file: VirtualFile
 ) : UserDataHolderBase(), FileEditor, WebviewPanel.WebviewListener {
 
-  private val webviewPanel = WebviewPanel(this, file, this)
+  private val webviewPanel = WebviewPanel(this, file, this, project)
 
   @Volatile
   var isDisposed = false; private set
@@ -80,17 +80,34 @@ class SchemaPreviewFileEditor(
     )
   }
 
-  private fun updateTheme() {
-    if (isDisposed) return
-    val t = when (DatabaseDiagramSettings.instance.state.defaultTheme) {
-      "Light" -> "light"; "Dark" -> "dark"
+  // FIX: WebviewPanel calls this once during initBrowser() to get the theme
+  // string so it can inject `<body class="dark">` into the HTML before loading.
+  // This eliminates the white flash — the body background is correct from the
+  // very first painted frame.
+  override fun resolveInitialTheme(): String = computeTheme()
+
+  private fun computeTheme(): String {
+    return when (DatabaseDiagramSettings.instance.state.defaultTheme) {
+      "Light" -> "light"
+      "Dark" -> "dark"
       else -> if (!JBColor.isBright()) "dark" else "light"
     }
-    webviewPanel.updateTheme(t)
   }
 
+  private fun updateTheme() {
+    if (isDisposed) return
+    webviewPanel.updateTheme(computeTheme())
+  }
+
+  // FIX: onWebviewReady() is the single authoritative trigger for the initial
+  // full render.  The browser is guaranteed to be loaded and the JS message
+  // listener is active at this point.  We no longer call render() from
+  // SchemaSplitEditorProvider.build() — that call happened before the browser
+  // existed and the message was silently dropped (the page wasn't loaded yet).
   override fun onWebviewReady() {
     if (isDisposed) return
+    // Theme is already applied via the injected body class, but send an
+    // explicit message too so live theme-changes via the IDE LAF listener work.
     updateTheme()
     ApplicationManager.getApplication().runReadAction {
       FileDocumentManager.getInstance().getDocument(file)?.let { render(it) }
