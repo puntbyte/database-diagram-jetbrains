@@ -1,124 +1,219 @@
-# IntelliJ Platform Plugin Template
+# Database Diagram — IntelliJ Plugin
 
-[![Twitter Follow](https://img.shields.io/badge/follow-%40JBPlatform-1DA1F2?logo=twitter)](https://twitter.com/JBPlatform)
-[![Developers Forum](https://img.shields.io/badge/JetBrains%20Platform-Join-blue)][jb:forum]
+An Entity-Relationship Diagram (ERD) previewer and editor for IntelliJ-based IDEs.
+Open any `.erd.yaml` file to see a live, interactive diagram of your SQL schema.
 
-## Plugin template structure
+---
 
-A generated project contains the following content structure:
+## Features
+
+- **Split editor** — YAML source on the left, interactive diagram on the right
+- **Live updates** — diagram re-renders as you type in the `.erd.yaml` or any imported `.sql` file
+- **Drag & drop layout** — move and resize tables; positions are written back to the YAML automatically
+- **Relationship lines** — infers FK relationships from `REFERENCES` clauses; supports explicit routing with `way_points`, `source_anchor`, and `target_anchor`
+- **Self-referencing tables** — FK loops are drawn on the left side to avoid overlap
+- **Semantic zoom** — zooming out switches to a compact overlay view showing table name and column count
+- **Custom colours** — per-table and per-note colour picker with Material Design palette
+- **Doc-comment tooltips** — `--- comment` lines above columns/tables appear as tooltips on hover
+- **Sticky notes** — annotate the diagram with Markdown-rendered notes, optionally with callout arrows pointing to specific tables or columns
+- **Line style** — Curve, Rectilinear, RoundRectilinear, Oblique, RoundOblique
+- **Theme** — System / Light / Dark, detected automatically from the IDE Look & Feel
+- **"New" menu** — right-click a directory → New → ERD Diagram or SQL Schema File
+
+---
+
+## Requirements
+
+| Requirement | Version |
+|---|---|
+| IntelliJ IDEA (or any IntelliJ-based IDE) | 2025.2.4+ (build 252+) |
+| JDK | 21 |
+| Kotlin | 2.1.20 |
+| Node.js (for building the web UI) | 22 |
+
+---
+
+## Project structure
 
 ```
-.
-├── .run/                   Predefined Run/Debug Configurations
-├── build/                  Output build directory
-├── gradle
-│   ├── wrapper/            Gradle Wrapper
-├── src                     Plugin sources
-│   ├── main
-│   │   ├── kotlin/         Kotlin production sources
-│   │   └── resources/      Resources - plugin.xml, icons, messages
-├── .gitignore              Git ignoring rules
-├── build.gradle.kts        Gradle build configuration
-├── gradle.properties       Gradle configuration properties
-├── gradlew                 *nix Gradle Wrapper script
-├── gradlew.bat             Windows Gradle Wrapper script
-├── README.md               README
-└── settings.gradle.kts     Gradle project settings
+database-diagram-jetbrains/
+├── build.gradle.kts                  Main Gradle build
+├── gradle.properties                 Memory + path settings (gitignored locally)
+│
+└── src/main/
+    ├── kotlin/com/puntbyte/dbd/
+    │   ├── actions/
+    │   │   ├── NewErdYamlAction.kt   "New → ERD Diagram" menu action
+    │   │   └── NewSqlSchemaAction.kt "New → SQL Schema File" menu action
+    │   ├── builders/
+    │   │   └── ErdDataBuilder.kt     Parses SQL PSI + YAML into SchemaPayload
+    │   ├── editor/
+    │   │   ├── SchemaSplitEditorProvider.kt  Registers the split editor
+    │   │   ├── SchemaPreviewFileEditor.kt    Preview panel + bridge callbacks
+    │   │   └── ErdYamlUpdater.kt             Writes positions/colours back to YAML
+    │   ├── settings/
+    │   │   ├── DatabaseDiagramSettings.kt    Persistent settings state
+    │   │   └── DatabaseDiagramConfigurable.kt  IDE Settings panel
+    │   ├── templates/
+    │   │   └── ErdFileTemplateGroup.kt       Registers .ft file templates
+    │   └── webview/
+    │       ├── WebviewBridge.kt              Kotlin ↔ JS data model + message types
+    │       ├── WebviewPanel.kt               JCEF browser host
+    │       └── WebviewSchemeHandler.kt       Custom scheme for resource loading
+    │
+    └── resources/
+        ├── META-INF/plugin.xml
+        ├── fileTemplates/
+        │   ├── ErdYaml.ft            Default .erd.yaml template
+        │   └── SqlSchema.ft          Default .sql template
+        └── web/                      Built web UI (generated, gitignored)
 ```
 
-In addition to the configuration files, the most crucial part is the `src` directory, which contains
-our implementation
-and the manifest for our plugin – [plugin.xml][file:plugin.xml].
+---
 
-> [!NOTE]
-> To use Java in your plugin, create the `/src/main/java` directory.
+## Building
 
-## Plugin configuration file
+### Prerequisites
 
-The plugin configuration file is a [plugin.xml][file:plugin.xml] file located in the
-`src/main/resources/META-INF`
-directory.
-It provides general information about the plugin, its dependencies, extensions, and listeners.
+- The standalone web project must be accessible (see **Web UI** below)
+- Set `localIdePath` in `build.gradle.kts` to your local IntelliJ installation, or use `intellijIdea("version")` to download one
 
-You can read more about this file in the [Plugin Configuration File][docs:plugin.xml] section of our
-documentation.
+### Web UI location
 
-If you're still not quite sure what this is all about, read our
-introduction: [What is the IntelliJ Platform?][docs:intro]
+The build reads the web project path from (highest priority first):
 
-$H$H Predefined Run/Debug configurations
+1. `WEB_PROJECT_DIR` environment variable
+2. `webProjectDir` in `gradle.properties`
+3. Sibling directory default: `../database-diagram-web`
 
-Within the default project structure, there is a `.run` directory provided containing predefined
-*Run/Debug
-configurations* that expose corresponding Gradle tasks:
+Example `gradle.properties` (gitignored):
+```properties
+webProjectDir=../database-diagram-web
+kotlin.daemon.jvmargs=-Xmx2g -XX:+UseG1GC
+org.gradle.jvmargs=-Xmx1500m -XX:+UseG1GC
+```
 
-| Configuration name | Description                                                                                                                                                                         |
-|--------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Run Plugin         | Runs [`:runIde`][gh:intellij-platform-gradle-plugin-runIde] IntelliJ Platform Gradle Plugin task. Use the *Debug* icon for plugin debugging.                                        |
-| Run Tests          | Runs [`:test`][gradle:lifecycle-tasks] Gradle task.                                                                                                                                 |
-| Run Verifications  | Runs [`:verifyPlugin`][gh:intellij-platform-gradle-plugin-verifyPlugin] IntelliJ Platform Gradle Plugin task to check the plugin compatibility against the specified IntelliJ IDEs. |
+### Commands
 
-> [!NOTE]
-> You can find the logs from the running task in the `idea.log` tab.
+```bash
+# Build the plugin JAR (also builds the web UI)
+./gradlew buildPlugin
 
-## Publishing the plugin
+# Build only the web UI bundle and copy it to resources
+./gradlew copyWebDist
 
-> [!TIP]
-> Make sure to follow all guidelines listed in [Publishing a Plugin][docs:publishing] to follow all
-> recommended and
-> required steps.
+# Run the plugin in a sandboxed IDE instance
+./gradlew runIde
 
-Releasing a plugin to [JetBrains Marketplace](https://plugins.jetbrains.com) is a straightforward
-operation that uses
-the `publishPlugin` Gradle task provided by
-the [intellij-platform-gradle-plugin][gh:intellij-platform-gradle-plugin-docs].
+# Type-check the Kotlin sources
+./gradlew compileKotlin
+```
 
-You can also upload the plugin to
-the [JetBrains Plugin Repository](https://plugins.jetbrains.com/plugin/upload)
-manually via UI.
+---
 
-## Useful links
+## `.erd.yaml` format
 
-- [IntelliJ Platform SDK Plugin SDK][docs]
-- [IntelliJ Platform Gradle Plugin Documentation][gh:intellij-platform-gradle-plugin-docs]
-- [IntelliJ Platform Explorer][jb:ipe]
-- [JetBrains Marketplace Quality Guidelines][jb:quality-guidelines]
-- [IntelliJ Platform UI Guidelines][jb:ui-guidelines]
-- [JetBrains Marketplace Paid Plugins][jb:paid-plugins]
-- [IntelliJ SDK Code Samples][gh:code-samples]
+```yaml
+schema:
+  imports:
+    - "schema.sql"          # Relative paths to SQL files
 
-[docs]: https://plugins.jetbrains.com/docs/intellij
+# Visual layout — managed automatically by dragging tables
+tables:
+  users:
+    x: 100
+    y: 150
+    width: 260
+    color: "#3b82f6"        # Optional header colour (hex)
 
-[docs:intro]: https://plugins.jetbrains.com/docs/intellij/intellij-platform.html?from=IJPluginTemplate
+# Relationship routing overrides (optional)
+relationships:
+  - source: orders.user_id
+    target: users.id
+    source_anchor: right    # left | right
+    target_anchor: left
+    way_points:
+      - { x: 50, y: 0, from: source }
+      - { x: 50, y: 0, from: target }
 
-[docs:plugin.xml]: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html?from=IJPluginTemplate
+# Diagram annotations
+notes:
+  - id: "note_001"
+    text: |
+      **Important:** All timestamps are stored in UTC.
+    x: 1300
+    y: 150
+    width: 250
+    color: "#fffde7"
+    target: "orders.user_id"   # Optional callout arrow
+    target_anchor: right
+```
 
-[docs:publishing]: https://plugins.jetbrains.com/docs/intellij/publishing-plugin.html?from=IJPluginTemplate
+---
 
-[file:plugin.xml]: ./src/main/resources/META-INF/plugin.xml
+## IDE Settings
 
-[gh:code-samples]: https://github.com/JetBrains/intellij-sdk-code-samples
+**Settings → Tools → Database Diagram**
 
-[gh:intellij-platform-gradle-plugin]: https://github.com/JetBrains/intellij-platform-gradle-plugin
+| Setting | Description |
+|---|---|
+| Default layout | Editor / Editor and Preview / Preview |
+| Line style | Curve / Rectilinear / RoundRectilinear / Oblique / RoundOblique |
+| Show grid | Toggle grid background |
+| Grid size | Grid cell size in pixels |
+| Theme | System / Light / Dark |
+| Show table notes | Toggle `--- comment` display in table headers |
+| Show field notes | Toggle `--- comment` display on columns |
+| Max table note lines | Line clamp for table notes (0 = unlimited) |
+| Max field note lines | Line clamp for field notes (0 = unlimited) |
 
-[gh:intellij-platform-gradle-plugin-docs]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html
+---
 
-[gh:intellij-platform-gradle-plugin-runIde]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-tasks.html#runIde
+## SQL doc-comment syntax
 
-[gh:intellij-platform-gradle-plugin-verifyPlugin]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-tasks.html#verifyPlugin
+Place a `---` comment on the line directly above a `CREATE TABLE` or column definition to attach a note that appears in the diagram:
 
-[gradle:lifecycle-tasks]: https://docs.gradle.org/current/userguide/java_plugin.html#lifecycle_tasks
+```sql
+--- Stores authenticated user accounts.
+CREATE TABLE users (
+    id          SERIAL      PRIMARY KEY,
 
-[jb:github]: https://github.com/JetBrains/.github/blob/main/profile/README.md
+    --- The user's display name shown in the UI.
+    display_name VARCHAR(120) NOT NULL,
 
-[jb:forum]: https://platform.jetbrains.com/
+    --- Role of this account; determines which workflows are available.
+    --- See public.account_type enum for valid values.
+    account_type account_type NOT NULL DEFAULT 'individual'
+);
+```
 
-[jb:quality-guidelines]: https://plugins.jetbrains.com/docs/marketplace/quality-guidelines.html
+Multi-line `---` blocks are joined into a single note with a space.
 
-[jb:paid-plugins]: https://plugins.jetbrains.com/docs/marketplace/paid-plugins-marketplace.html
+---
 
-[jb:quality-guidelines]: https://plugins.jetbrains.com/docs/marketplace/quality-guidelines.html
+## Architecture
 
-[jb:ipe]: https://jb.gg/ipe
+```
+IDE (Kotlin)
+  SchemaSplitEditorProvider
+    └─ SchemaPreviewFileEditor          Disposable, owns the lifecycle
+         ├─ ErdDataBuilder              SQL PSI + YAML → SchemaPayload
+         ├─ ErdYamlUpdater              Writes x/y/colour back to YAML
+         └─ WebviewPanel                Hosts the JCEF browser
+              └─ window.postMessage()  ──► JS: Bridge.ts
+                                               └─ DiagramApplication
+                                                    └─ DiagramController
+```
 
-[jb:ui-guidelines]: https://jetbrains.github.io/ui
+Messages are JSON objects tagged with a `type` discriminator.
+`WebviewBridge.kt` defines all shared data classes (tables, fields, relationships, notes) and both sealed class hierarchies (`Server` and `Client`).
+
+---
+
+## Contributing
+
+1. Fork and clone the repo
+2. Open in IntelliJ IDEA
+3. Set `localIdePath` in `build.gradle.kts`
+4. Run `./gradlew runIde` to launch a sandbox IDE with the plugin loaded
+5. The web UI hot-reloads via `npm run dev` in the web project — see the web project README for details
