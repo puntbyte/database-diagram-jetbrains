@@ -1,4 +1,4 @@
-<!-- Plugin Configuration File: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<!-- Plugin Configuration File -->
 <idea-plugin>
   <!-- Unique identifier of the plugin. It should be FQN, cannot be changed between the plugin versions. -->
   <id>com.puntbyte.dbd</id>
@@ -13,8 +13,8 @@
   <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
        Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-description -->
   <description><![CDATA[
-        An Entity-Relation Diagram previewer and editor using SQL files and .erd.yaml layouts.
-    ]]></description>
+      An Entity-Relation Diagram previewer and editor using SQL files and .erd.yaml layouts.
+  ]]></description>
 
   <!-- Product and plugin compatibility requirements.
        Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
@@ -28,6 +28,7 @@
   <!-- Extensions defined by the plugin.
        Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
   <extensions defaultExtensionNs="com.intellij">
+
     <applicationService serviceImplementation="com.puntbyte.dbd.settings.DatabaseDiagramSettings"/>
 
     <applicationConfigurable
@@ -37,5 +38,44 @@
         displayName="Database Diagram"/>
 
     <fileEditorProvider implementation="com.puntbyte.dbd.editor.SchemaSplitEditorProvider"/>
+
+    <!-- File template group — tells IntelliJ where to find the .ft files -->
+    <fileTemplateGroup implementation="com.puntbyte.dbd.templates.ErdFileTemplateGroup"/>
+
+    <!--
+      Internal file templates bundled with the plugin.
+      `name`  must match the .ft filename (without extension) in
+              src/main/resources/fileTemplates/
+      The extension is NOT declared here because we control it ourselves in
+      createFileFromTemplate() — the .erd.yaml double-extension needs special
+      handling that IntelliJ's template system doesn't support natively.
+    -->
+    <internalFileTemplate name="ErdYaml"/>
+    <internalFileTemplate name="SqlSchema"/>
+
   </extensions>
+
+  <actions>
+    <group id="com.puntbyte.dbd.NewFileGroup"
+           text="ERD Diagram"
+           description="Create ERD-related files"
+           popup="true"
+           icon="AllIcons.FileTypes.Yaml">
+
+      <action id="com.puntbyte.dbd.NewErdYaml"
+              class="com.puntbyte.dbd.actions.NewErdYamlAction"
+              text="ERD Diagram (.erd.yaml)"
+              description="Create a new ERD layout file"
+              icon="AllIcons.FileTypes.Yaml"/>
+
+      <action id="com.puntbyte.dbd.NewSqlSchema"
+              class="com.puntbyte.dbd.actions.NewSqlSchemaAction"
+              text="SQL Schema File (.sql)"
+              description="Create a new SQL schema file"
+              icon="AllIcons.FileTypes.Text"/>
+
+      <add-to-group group-id="NewGroup" anchor="after" relative-to-action="NewFile"/>
+    </group>
+  </actions>
+
 </idea-plugin>

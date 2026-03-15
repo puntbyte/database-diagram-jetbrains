@@ -1,0 +1,8 @@
+-- ${NAME}.sql
+-- SQL schema for use with the ERD diagram plugin
+
+CREATE TABLE example (
+    id          SERIAL      PRIMARY KEY,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

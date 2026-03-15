@@ -1,0 +1,25 @@
+## ERD layout file for ${NAME}
+## Documentation: https://github.com/your-org/database-diagram-jetbrains
+
+schema:
+  imports:
+    - "${NAME}.sql"
+
+## Table visual positions (managed automatically by dragging)
+tables: {}
+
+## Optional: override or add relationship routing
+## relationships:
+##   - source: orders.user_id
+##     target: users.id
+##     source_anchor: right
+##     target_anchor: left
+
+## Optional: diagram annotations
+## notes:
+##   - id: "note_001"
+##     text: "**Note:** Add your description here"
+##     x: 100
+##     y: 100
+##     width: 220
+##     color: "#fffde7"
